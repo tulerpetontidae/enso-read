@@ -1,42 +1,64 @@
-# Zen Reader JP
+<p align="center">
+  <img src="public/landing_zen.svg" width="80" alt="ZenRead JP">
+</p>
 
-A minimalist Japanese EPUB reader with integrated translation and note-taking.
+<h1 align="center">ZenRead JP</h1>
+
+<p align="center">
+  A minimalist Japanese EPUB reader for immersive learning.
+</p>
+
+<p align="center">
+  <a href="https://zen-read-jp.vercel.app">zen-read-jp.vercel.app</a>
+</p>
+
+---
+
+## Philosophy
+
+Reading is one of the best ways to improve language comprehension — yet it can be hard to stay focused when every sentence feels like a puzzle. This minimalist tool streamlines Japanese book reading with quick comprehension assistance when needed, so you don't lose the narrative thread and stay engaged with the text.
+
+Follow these principles to get the most out of it:
+
+**Translate to verify, not to cheat.** Read a paragraph, form your understanding, then check the translation to confirm you got it right. This active process builds real comprehension.
+
+**Leave notes for your future self.** Mark tricky grammar, save useful vocabulary, or jot down questions for your next langauge lesson. Your annotations stay with the text, ready when you return.
+
+---
 
 ## Features
 
-- **EPUB Reader** — Clean, distraction-free reading with customizable fonts and text width
-- **Reading Progress** — Automatically saves and restores your position in each book
-- **Paragraph Translation** — Hover to reveal translation button, powered by OpenAI gpt-5.2
-- **Personal Notes** — Add notes to any paragraph, saved locally
-- **Offline Storage** — All data stored in browser (IndexedDB)
+- **Clean Reading** — Distraction-free interface with customizable fonts, sizes, and themes
+- **Paragraph Translation** — On-demand AI translation (OpenAI) to verify your understanding. To enable translations, add your [OpenAI API key](https://platform.openai.com/api-keys) in Settings.  
+- **Personal Notes** — Annotate any paragraph; notes persist locally
+- **Progress Memory** — Automatically saves your position in each book
+- **Offline Storage** — Everything stored in your browser
 
-## Installation
+---
+
+## Local Deploy
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000)
+Open [localhost:3000](http://localhost:3000), drop in an EPUB, and start reading.
 
-## Usage
+---
 
-1. **Add a book** — Drag and drop an EPUB file onto the home page
-2. **Configure API key** — Click the settings icon and add your [OpenAI API key](https://platform.openai.com/api-keys)
-3. **Read** — Open a book from your library
-4. **Translate** — Hover left of a paragraph → click the translate icon
-5. **Take notes** — Hover right of a paragraph → click the pencil icon
+## Recommended
 
-## Settings
+For instant word lookups, pair with the [10ten Japanese Reader](https://github.com/birchill/10ten-ja-reader) browser extension.
 
-- **Font** — Noto Serif JP or Shippori Mincho
-- **Text Width** — Narrow (600px), Medium (768px), or Wide (960px)
-- **OpenAI API Key** — Required for translation (uses gpt-5.2)
+---
 
-## Tech Stack
+## Tech
 
-Next.js 16 · React 19 · Tailwind CSS 4 · Dexie (IndexedDB) · epub.js
+Next.js · React · Tailwind CSS · Dexie (IndexedDB) · epub.js · OpenAI
 
-## License
+---
 
-MIT
+<p align="center">
+  <sub>MIT License</sub>
+</p>
