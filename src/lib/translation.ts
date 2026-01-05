@@ -4,6 +4,22 @@
 
 export type TranslationEngine = 'openai' | 'google';
 
+// Chrome Translator API types
+interface TranslatorAPI {
+  availability(options: { sourceLanguage: string; targetLanguage: string }): Promise<'available' | 'downloadable' | 'unavailable'>;
+  create(options: { sourceLanguage: string; targetLanguage: string }): Promise<TranslatorInstance>;
+}
+
+interface TranslatorInstance {
+  translate(text: string): Promise<string>;
+}
+
+declare global {
+  interface WindowOrWorkerGlobalScope {
+    Translator?: TranslatorAPI;
+  }
+}
+
 export interface TranslationResult {
   translation: string;
   engine: TranslationEngine;
@@ -22,8 +38,11 @@ export async function translateWithGoogle(text: string): Promise<string | null> 
   }
 
   try {
-    // @ts-ignore - Chrome Translator API
-    const Translator = self.Translator;
+    const Translator = (self as unknown as WindowOrWorkerGlobalScope).Translator;
+    
+    if (!Translator) {
+      return null;
+    }
 
     // Check if availability method exists
     if (typeof Translator.availability !== 'function') {
@@ -31,7 +50,6 @@ export async function translateWithGoogle(text: string): Promise<string | null> 
       return null;
     }
 
-    // @ts-ignore - Chrome Translator API
     const availability = await Translator.availability({
       sourceLanguage: 'ja',
       targetLanguage: 'en',
@@ -47,14 +65,12 @@ export async function translateWithGoogle(text: string): Promise<string | null> 
       return null;
     }
 
-    // @ts-ignore - Chrome Translator API
     const translator = await Translator.create({
       sourceLanguage: 'ja',
       targetLanguage: 'en',
     });
 
     // Translate the text using the instance
-    // @ts-ignore - Chrome Translator API
     const result = await translator.translate(text);
 
     return result || null;
