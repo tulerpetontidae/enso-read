@@ -5,13 +5,14 @@ import { db } from '@/lib/db';
 import Link from 'next/link';
 import { FaChevronLeft } from 'react-icons/fa';
 import { IoEye, IoEyeOff } from 'react-icons/io5';
-import { FONT_OPTIONS, WIDTH_OPTIONS, THEME_OPTIONS, applyTheme } from '@/components/SettingsModal';
+import { FONT_OPTIONS, WIDTH_OPTIONS, FONT_SIZE_OPTIONS, THEME_OPTIONS, applyTheme } from '@/components/SettingsModal';
 
 export default function SettingsPage() {
     const [apiKey, setApiKey] = useState('');
     const [showKey, setShowKey] = useState(false);
     const [selectedFont, setSelectedFont] = useState('noto-serif');
     const [selectedWidth, setSelectedWidth] = useState('medium');
+    const [selectedFontSize, setSelectedFontSize] = useState('medium');
     const [selectedTheme, setSelectedTheme] = useState('light');
     const [isSaving, setIsSaving] = useState(false);
     const [saveMessage, setSaveMessage] = useState<string | null>(null);
@@ -20,15 +21,17 @@ export default function SettingsPage() {
     useEffect(() => {
         const loadSettings = async () => {
             try {
-                const [apiKeySetting, fontSetting, widthSetting, themeSetting] = await Promise.all([
+                const [apiKeySetting, fontSetting, widthSetting, fontSizeSetting, themeSetting] = await Promise.all([
                     db.settings.get('openai_api_key'),
                     db.settings.get('reader_font'),
                     db.settings.get('reader_width'),
+                    db.settings.get('reader_font_size'),
                     db.settings.get('theme'),
                 ]);
                 if (apiKeySetting?.value) setApiKey(apiKeySetting.value);
                 if (fontSetting?.value) setSelectedFont(fontSetting.value);
                 if (widthSetting?.value) setSelectedWidth(widthSetting.value);
+                if (fontSizeSetting?.value) setSelectedFontSize(fontSizeSetting.value);
                 if (themeSetting?.value) setSelectedTheme(themeSetting.value);
             } catch (e) {
                 console.error('Failed to load settings:', e);
@@ -36,6 +39,11 @@ export default function SettingsPage() {
         };
         loadSettings();
     }, []);
+    
+    // Live preview theme
+    useEffect(() => {
+        applyTheme(selectedTheme);
+    }, [selectedTheme]);
 
     const handleSave = async () => {
         setIsSaving(true);
@@ -46,6 +54,7 @@ export default function SettingsPage() {
                 db.settings.put({ key: 'openai_api_key', value: apiKey.trim() }),
                 db.settings.put({ key: 'reader_font', value: selectedFont }),
                 db.settings.put({ key: 'reader_width', value: selectedWidth }),
+                db.settings.put({ key: 'reader_font_size', value: selectedFontSize }),
                 db.settings.put({ key: 'theme', value: selectedTheme }),
             ]);
             applyTheme(selectedTheme);
@@ -96,9 +105,16 @@ export default function SettingsPage() {
                                         className={`px-4 py-4 rounded-xl border text-left transition-all ${
                                             selectedFont === font.value
                                                 ? 'border-rose-300 bg-rose-50 text-rose-700'
-                                                : 'border-stone-200 bg-stone-50 text-stone-600 hover:border-stone-300'
+                                                : ''
                                         }`}
-                                        style={{ fontFamily: font.fontFamily }}
+                                        style={{ 
+                                            fontFamily: font.fontFamily,
+                                            ...(selectedFont !== font.value ? {
+                                                backgroundColor: 'var(--zen-btn-bg)',
+                                                borderColor: 'var(--zen-btn-border)',
+                                                color: 'var(--zen-btn-text)'
+                                            } : {})
+                                        }}
                                     >
                                         <span className="text-sm block mb-1">{font.label}</span>
                                         <span className="text-2xl">読書の楽しみ</span>
@@ -118,10 +134,53 @@ export default function SettingsPage() {
                                         className={`flex-1 px-4 py-3 rounded-xl border text-sm font-medium transition-all ${
                                             selectedWidth === width.value
                                                 ? 'border-rose-300 bg-rose-50 text-rose-700'
-                                                : 'border-stone-200 bg-stone-50 text-stone-600 hover:border-stone-300'
+                                                : ''
                                         }`}
+                                        style={selectedWidth !== width.value ? {
+                                            backgroundColor: 'var(--zen-btn-bg)',
+                                            borderColor: 'var(--zen-btn-border)',
+                                            color: 'var(--zen-btn-text)'
+                                        } : undefined}
                                     >
                                         {width.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        
+                        {/* Font Size Selection */}
+                        <div className="space-y-3">
+                            <label className="block text-sm font-medium" style={{ color: 'var(--zen-text, #1c1917)' }}>Font Size</label>
+                            <div className="grid grid-cols-4 gap-3">
+                                {FONT_SIZE_OPTIONS.map((size) => (
+                                    <button
+                                        key={size.value}
+                                        onClick={() => setSelectedFontSize(size.value)}
+                                        className={`px-2 py-3 rounded-xl border text-center transition-all flex flex-col items-center justify-end gap-1 h-24 ${
+                                            selectedFontSize === size.value
+                                                ? 'border-rose-300 bg-rose-50'
+                                                : ''
+                                        }`}
+                                        style={selectedFontSize !== size.value ? {
+                                            backgroundColor: 'var(--zen-btn-bg)',
+                                            borderColor: 'var(--zen-btn-border)',
+                                        } : undefined}
+                                    >
+                                        <span 
+                                            className="font-serif leading-none"
+                                            style={{ 
+                                                fontSize: `${size.displaySize}px`,
+                                                color: selectedFontSize === size.value ? '#be123c' : 'var(--zen-btn-text)'
+                                            }}
+                                        >
+                                            あ
+                                        </span>
+                                        <span 
+                                            className="text-xs"
+                                            style={{ color: selectedFontSize === size.value ? '#e11d48' : 'var(--zen-text-muted)' }}
+                                        >
+                                            {size.label}
+                                        </span>
                                     </button>
                                 ))}
                             </div>
@@ -184,12 +243,20 @@ export default function SettingsPage() {
                                     value={apiKey}
                                     onChange={(e) => setApiKey(e.target.value)}
                                     placeholder="sk-..."
-                                    className="w-full px-4 py-3 pr-12 bg-stone-50 border border-stone-200 rounded-xl text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-rose-200 focus:border-rose-300 transition-all"
+                                    className="w-full px-4 py-3 pr-12 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-200 focus:border-rose-300 transition-all"
+                                    style={{
+                                        backgroundColor: 'var(--zen-btn-bg)',
+                                        borderWidth: '1px',
+                                        borderStyle: 'solid',
+                                        borderColor: 'var(--zen-btn-border)',
+                                        color: 'var(--zen-text)',
+                                    }}
                                 />
                                 <button
                                     type="button"
                                     onClick={() => setShowKey(!showKey)}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-stone-400 hover:text-stone-600 transition-colors"
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 transition-colors"
+                                    style={{ color: 'var(--zen-text-muted)' }}
                                 >
                                     {showKey ? <IoEyeOff size={18} /> : <IoEye size={18} />}
                                 </button>
@@ -215,9 +282,17 @@ export default function SettingsPage() {
                 </div>
 
                 {/* Info Section */}
-                <div className="mt-8 p-6 bg-stone-50 rounded-2xl border border-stone-100">
-                    <h3 className="text-sm font-medium text-stone-700 mb-2">How Translation Works</h3>
-                    <ul className="text-sm text-stone-500 space-y-2">
+                <div 
+                    className="mt-8 p-6 rounded-2xl"
+                    style={{
+                        backgroundColor: 'var(--zen-info-bg)',
+                        borderWidth: '1px',
+                        borderStyle: 'solid',
+                        borderColor: 'var(--zen-info-border)'
+                    }}
+                >
+                    <h3 className="text-sm font-medium mb-2" style={{ color: 'var(--zen-info-heading)' }}>How Translation Works</h3>
+                    <ul className="text-sm space-y-2" style={{ color: 'var(--zen-info-text)' }}>
                         <li>• Hover near a paragraph to see the translate button</li>
                         <li>• Click to translate Japanese text to English</li>
                         <li>• Translations are cached locally - no repeat API calls</li>
@@ -226,15 +301,23 @@ export default function SettingsPage() {
                 </div>
 
                 {/* 10ten Recommendation */}
-                <div className="p-6 bg-amber-50 rounded-2xl border border-amber-200">
-                    <h3 className="text-sm font-medium text-amber-800 mb-2">Recommended Extension</h3>
-                    <p className="text-sm text-amber-700">
+                <div 
+                    className="p-6 rounded-2xl"
+                    style={{
+                        backgroundColor: 'var(--zen-recommend-bg)',
+                        borderWidth: '1px',
+                        borderStyle: 'solid',
+                        borderColor: 'var(--zen-recommend-border)'
+                    }}
+                >
+                    <h3 className="text-sm font-medium mb-2" style={{ color: 'var(--zen-recommend-heading)' }}>Recommended Extension</h3>
+                    <p className="text-sm" style={{ color: 'var(--zen-recommend-text)' }}>
                         For instant word lookups while reading, install the{' '}
                         <a 
                             href="https://github.com/birchill/10ten-ja-reader"
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="font-medium underline hover:text-amber-900"
+                            className="font-medium underline"
                         >
                             10ten Japanese Reader
                         </a>{' '}

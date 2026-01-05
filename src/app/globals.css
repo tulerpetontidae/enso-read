@@ -71,6 +71,22 @@ body {
   --zen-upload-icon-bg: #fafaf9;
   --zen-upload-icon-drag-bg: #e7e5e4;
   --zen-upload-line-bg: #e7e5e4;
+  
+  /* Buttons */
+  --zen-btn-bg: #fafaf9;
+  --zen-btn-border: #e7e5e4;
+  --zen-btn-text: #57534e;
+  --zen-btn-hover-border: #d6d3d1;
+  
+  /* Info cards */
+  --zen-info-bg: #fafaf9;
+  --zen-info-border: #f5f5f4;
+  --zen-info-text: #78716c;
+  --zen-info-heading: #57534e;
+  --zen-recommend-bg: #fffbeb;
+  --zen-recommend-border: #fde68a;
+  --zen-recommend-text: #b45309;
+  --zen-recommend-heading: #92400e;
 }
 
 /* Theme: Sepia (warmer, paper-like) */
@@ -127,6 +143,22 @@ body {
   --zen-upload-icon-bg: #E8E0D0;
   --zen-upload-icon-drag-bg: #D4C9B8;
   --zen-upload-line-bg: #D4C9B8;
+  
+  /* Buttons */
+  --zen-btn-bg: #E8E0D0;
+  --zen-btn-border: #D4C9B8;
+  --zen-btn-text: #6B5D4D;
+  --zen-btn-hover-border: #C4B8A5;
+  
+  /* Info cards */
+  --zen-info-bg: #E8E0D0;
+  --zen-info-border: #D4C9B8;
+  --zen-info-text: #8B775C;
+  --zen-info-heading: #6B5D4D;
+  --zen-recommend-bg: #E8E0D0;
+  --zen-recommend-border: #D4C9B8;
+  --zen-recommend-text: #8B775C;
+  --zen-recommend-heading: #6B5D4D;
 }
 
 /* Theme: Dark */
@@ -183,4 +215,20 @@ body {
   --zen-upload-icon-bg: #262626;
   --zen-upload-icon-drag-bg: #333333;
   --zen-upload-line-bg: #333333;
+  
+  /* Buttons */
+  --zen-btn-bg: #262626;
+  --zen-btn-border: #404040;
+  --zen-btn-text: #a8a29e;
+  --zen-btn-hover-border: #525252;
+  
+  /* Info cards */
+  --zen-info-bg: #1f1f1f;
+  --zen-info-border: #333333;
+  --zen-info-text: #a8a29e;
+  --zen-info-heading: #d4d4d4;
+  --zen-recommend-bg: #1f1f1f;
+  --zen-recommend-border: #333333;
+  --zen-recommend-text: #a8a29e;
+  --zen-recommend-heading: #d4d4d4;
 }

@@ -8,7 +8,7 @@ import { IoSettingsOutline } from 'react-icons/io5';
 import Link from 'next/link';
 import parse, { domToReact, HTMLReactParserOptions, Element, DOMNode } from 'html-react-parser';
 import TranslatableParagraph from '@/components/TranslatableParagraph';
-import SettingsModal, { FONT_OPTIONS, WIDTH_OPTIONS } from '@/components/SettingsModal';
+import SettingsModal, { FONT_OPTIONS, WIDTH_OPTIONS, FONT_SIZE_OPTIONS } from '@/components/SettingsModal';
 
 function debounce(func: Function, wait: number) {
     let timeout: NodeJS.Timeout;
@@ -63,16 +63,19 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [readerFont, setReaderFont] = useState('noto-serif');
     const [readerWidth, setReaderWidth] = useState('medium');
+    const [readerFontSize, setReaderFontSize] = useState('medium');
 
     // Load reader settings
     const loadReaderSettings = useCallback(async () => {
         try {
-            const [fontSetting, widthSetting] = await Promise.all([
+            const [fontSetting, widthSetting, fontSizeSetting] = await Promise.all([
                 db.settings.get('reader_font'),
                 db.settings.get('reader_width'),
+                db.settings.get('reader_font_size'),
             ]);
             if (fontSetting?.value) setReaderFont(fontSetting.value);
             if (widthSetting?.value) setReaderWidth(widthSetting.value);
+            if (fontSizeSetting?.value) setReaderFontSize(fontSizeSetting.value);
         } catch (e) {
             console.error('Failed to load reader settings:', e);
         }
@@ -82,9 +85,10 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
         loadReaderSettings();
     }, [loadReaderSettings]);
 
-    // Get current font family and max width from settings
+    // Get current font family, max width, and font size from settings
     const currentFont = FONT_OPTIONS.find(f => f.value === readerFont) || FONT_OPTIONS[0];
     const currentWidth = WIDTH_OPTIONS.find(w => w.value === readerWidth) || WIDTH_OPTIONS[1];
+    const currentFontSize = FONT_SIZE_OPTIONS.find(s => s.value === readerFontSize) || FONT_SIZE_OPTIONS[1];
 
     // Parser options to wrap paragraphs with TranslatableParagraph
     const parserOptions: HTMLReactParserOptions = useMemo(() => ({
@@ -339,12 +343,13 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
                             className="epub-section"
                             style={{
                                 fontFamily: currentFont.fontFamily,
-                                fontSize: '20px',
+                                fontSize: currentFontSize.size,
                                 lineHeight: '1.9',
                                 color: 'var(--zen-text, #1a1a1a)',
                                 padding: '10px 40px',
                                 textAlign: 'left',
-                                wordBreak: 'break-word'
+                                wordBreak: 'break-word',
+                                transition: 'font-size 0.2s ease'
                             }}
                         >
                             {parse(section.html, parserOptions)}
