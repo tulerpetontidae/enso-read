@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="public/landing_zen.svg" width="80" alt="ZenRead JP">
+  <img src="src/app/landing_zen.svg" width="80" alt="ZenRead JP">
 </p>
 
 <h1 align="center">ZenRead JP</h1>
