@@ -5,6 +5,7 @@ interface Book {
   title: string;
   data: ArrayBuffer;
   addedAt: number;
+  coverImage?: string; // Base64 data URL of cover image
 }
 
 interface WebConfig {

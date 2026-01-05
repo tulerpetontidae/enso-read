@@ -6,6 +6,41 @@ import { db } from '@/lib/db';
 import { v4 as uuidv4 } from 'uuid';
 import clsx from 'clsx';
 import { FaBookOpen, FaCloudUploadAlt } from 'react-icons/fa';
+import ePub from 'epubjs';
+
+// Extract cover image from EPUB (best effort, fails gracefully)
+async function extractCoverImage(arrayBuffer: ArrayBuffer): Promise<string | undefined> {
+    try {
+        // @ts-ignore
+        const book = ePub(arrayBuffer);
+        await book.ready;
+        
+        // Try to get cover from metadata
+        // @ts-ignore
+        const coverUrl = await book.coverUrl();
+        if (coverUrl) {
+            try {
+                const response = await fetch(coverUrl);
+                const blob = await response.blob();
+                const result = await new Promise<string>((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result as string);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blob);
+                });
+                book.destroy();
+                return result;
+            } catch {
+                // Cover fetch failed, continue without cover
+            }
+        }
+        
+        book.destroy();
+    } catch (e) {
+        console.warn('Cover extraction skipped:', e);
+    }
+    return undefined;
+}
 
 export default function FileUpload() {
     const router = useRouter();
@@ -32,12 +67,23 @@ export default function FileUpload() {
         try {
             const arrayBuffer = await file.arrayBuffer();
             const id = uuidv4();
+            
+            // Try to extract cover image (non-blocking, fails gracefully)
+            let coverImage: string | undefined;
+            try {
+                // Create a copy for cover extraction so original buffer stays intact
+                const bufferCopy = arrayBuffer.slice(0);
+                coverImage = await extractCoverImage(bufferCopy);
+            } catch {
+                // Cover extraction failed, continue without it
+            }
 
             await db.books.add({
                 id,
                 title: file.name.replace('.epub', ''),
                 data: arrayBuffer,
                 addedAt: Date.now(),
+                coverImage,
             });
 
             router.push(`/reader/${id}`);
@@ -66,18 +112,22 @@ export default function FileUpload() {
     return (
         <div
             className={clsx(
-                "w-full max-w-2xl p-16 rounded-3xl transition-all duration-500 flex flex-col items-center justify-center gap-8 cursor-pointer relative overflow-hidden group",
-                isDragging
-                    ? "bg-stone-100 dark:bg-stone-800 scale-[1.02]"
-                    : "bg-white dark:bg-stone-900 shadow-2xl shadow-stone-200/50 dark:shadow-black/20 hover:shadow-3xl hover:shadow-stone-300/50 dark:hover:shadow-black/40",
+                "w-full max-w-xl px-12 py-10 rounded-2xl transition-all duration-500 flex flex-col items-center justify-center gap-5 cursor-pointer relative overflow-hidden group shadow-xl hover:shadow-2xl",
+                isDragging && "scale-[1.02]",
                 isProcessing && "opacity-80 pointer-events-none"
             )}
+            style={{
+                backgroundColor: isDragging ? 'var(--zen-upload-drag-bg, #f5f5f4)' : 'var(--zen-upload-bg, white)',
+            }}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
             onClick={() => document.getElementById('file-upload')?.click()}
         >
-            <div className="absolute inset-0 bg-gradient-to-br from-rose-50/50 to-transparent dark:from-rose-900/10 dark:to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+            <div 
+                className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-700" 
+                style={{ background: 'var(--zen-upload-hover-gradient, linear-gradient(to bottom right, rgba(255,228,230,0.5), transparent))' }}
+            />
 
             <input
                 type="file"
@@ -87,32 +137,39 @@ export default function FileUpload() {
                 onChange={handleFileSelect}
             />
 
-            <div className={clsx(
-                "relative p-8 rounded-full transition-all duration-500",
-                isDragging
-                    ? "bg-stone-200 dark:bg-stone-700 text-stone-800 dark:text-stone-100 scale-110"
-                    : "bg-stone-50 dark:bg-stone-800 text-stone-400 group-hover:text-rose-500 group-hover:bg-rose-50 dark:group-hover:bg-rose-900/20"
-            )}>
+            <div 
+                className={clsx(
+                    "relative p-5 rounded-full transition-all duration-500 group-hover:text-rose-500",
+                    isDragging && "scale-110"
+                )}
+                style={{
+                    backgroundColor: isDragging ? 'var(--zen-upload-icon-drag-bg, #e7e5e4)' : 'var(--zen-upload-icon-bg, #fafaf9)',
+                    color: 'var(--zen-text-muted, #a8a29e)'
+                }}
+            >
                 {isProcessing ? (
-                    <FaBookOpen className="text-5xl animate-bounce" />
+                    <FaBookOpen className="text-3xl animate-bounce" />
                 ) : (
-                    <FaCloudUploadAlt className="text-5xl" />
+                    <FaCloudUploadAlt className="text-3xl" />
                 )}
             </div>
 
-            <div className="text-center space-y-3 relative z-10">
-                <h3 className="text-3xl font-serif font-light text-stone-800 dark:text-stone-100 tracking-wide">
-                    {isProcessing ? 'Opening Book...' : 'Library Import'}
+            <div className="text-center space-y-2 relative z-10">
+                <h3 className="text-xl font-serif font-light tracking-wide" style={{ color: 'var(--zen-heading, #1c1917)' }}>
+                    {isProcessing ? 'Opening Book...' : 'Book Import'}
                 </h3>
-                <p className="text-stone-400 dark:text-stone-500 text-base font-light tracking-wide">
-                    Drop your EPUB file here to begin your journey
+                <p className="text-sm font-light tracking-wide" style={{ color: 'var(--zen-text-muted, #a8a29e)' }}>
+                    Drop your EPUB file here to begin
                 </p>
             </div>
 
-            <div className={clsx(
-                "h-1 w-24 rounded-full transition-all duration-700",
-                isDragging ? "bg-stone-400 w-32" : "bg-stone-100 dark:bg-stone-800 group-hover:bg-rose-200 dark:group-hover:bg-rose-800"
-            )} />
+            <div 
+                className={clsx(
+                    "h-0.5 w-16 rounded-full transition-all duration-700 group-hover:bg-rose-200",
+                    isDragging && "bg-stone-400 w-24"
+                )}
+                style={{ backgroundColor: isDragging ? undefined : 'var(--zen-upload-line-bg, #e7e5e4)' }}
+            />
         </div>
     );
 }

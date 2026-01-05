@@ -11,15 +11,176 @@
   --font-serif: var(--font-noto-serif-jp);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Theme: Light (default warm cream) */
+.theme-light {
+  /* Backgrounds */
+  --zen-bg: #FDFBF7;
+  --zen-bg-secondary: #ffffff;
+  --zen-reader-bg: #FDFBF7;
+  
+  /* Text */
+  --zen-heading: #1c1917;
+  --zen-text: #1c1917;
+  --zen-text-muted: #78716c;
+  
+  /* Borders & Accents */
+  --zen-border: rgba(0, 0, 0, 0.06);
+  --zen-accent-bg: rgba(255, 255, 255, 0.5);
+  
+  /* Cards */
+  --zen-card-bg: rgba(255, 255, 255, 0.4);
+  --zen-card-solid-bg: #ffffff;
+  --zen-card-hover-gradient: linear-gradient(to top, rgba(255,255,255,0.9), transparent);
+  
+  /* Inputs */
+  --zen-input-bg: #ffffff;
+  
+  /* Placeholders */
+  --zen-placeholder-bg: #f5f5f4;
+  --zen-placeholder-border: #d6d3d1;
+  --zen-placeholder-text: #d6d3d1;
+  
+  /* Progress bar */
+  --zen-progress-bg: #e7e5e4;
+  --zen-progress-fill: #78716c;
+  
+  /* Logo */
+  --zen-logo-filter: none;
+  
+  /* Translation popup */
+  --zen-translation-bg: rgba(255, 241, 242, 0.5);
+  --zen-translation-border: #fecdd3;
+  --zen-translation-text: #57534e;
+  
+  /* Note popup */
+  --zen-note-bg: #ffffff;
+  --zen-note-border: #fcd34d;
+  --zen-note-header-bg: #fef3c7;
+  --zen-note-header-text: #b45309;
+  
+  /* Upload area */
+  --zen-upload-bg: #ffffff;
+  --zen-upload-drag-bg: #f5f5f4;
+  --zen-upload-hover-gradient: linear-gradient(to bottom right, rgba(255,228,230,0.5), transparent);
+  --zen-upload-icon-bg: #fafaf9;
+  --zen-upload-icon-drag-bg: #e7e5e4;
+  --zen-upload-line-bg: #e7e5e4;
+}
+
+/* Theme: Sepia (warmer, paper-like) */
+.theme-sepia {
+  /* Backgrounds */
+  --zen-bg: #F5F0E6;
+  --zen-bg-secondary: #EDE6D6;
+  --zen-reader-bg: #F5F0E6;
+  
+  /* Text */
+  --zen-heading: #3D3229;
+  --zen-text: #3D3229;
+  --zen-text-muted: #8B775C;
+  
+  /* Borders & Accents */
+  --zen-border: rgba(139, 119, 92, 0.25);
+  --zen-accent-bg: rgba(237, 230, 214, 0.8);
+  
+  /* Cards */
+  --zen-card-bg: rgba(237, 230, 214, 0.6);
+  --zen-card-solid-bg: #EDE6D6;
+  --zen-card-hover-gradient: linear-gradient(to top, rgba(237,230,214,0.95), transparent);
+  
+  /* Inputs */
+  --zen-input-bg: #F5F0E6;
+  
+  /* Placeholders */
+  --zen-placeholder-bg: #E8E0D0;
+  --zen-placeholder-border: #C4B8A5;
+  --zen-placeholder-text: #B8A990;
+  
+  /* Progress bar */
+  --zen-progress-bg: #D4C9B8;
+  --zen-progress-fill: #8B775C;
+  
+  /* Logo */
+  --zen-logo-filter: sepia(20%);
+  
+  /* Translation popup */
+  --zen-translation-bg: rgba(254, 243, 199, 0.5);
+  --zen-translation-border: #d4a574;
+  --zen-translation-text: #3D3229;
+  
+  /* Note popup */
+  --zen-note-bg: #F5F0E6;
+  --zen-note-border: #d4a574;
+  --zen-note-header-bg: #E8E0D0;
+  --zen-note-header-text: #6B5D4D;
+  
+  /* Upload area */
+  --zen-upload-bg: #EDE6D6;
+  --zen-upload-drag-bg: #E8E0D0;
+  --zen-upload-hover-gradient: linear-gradient(to bottom right, rgba(212,165,116,0.2), transparent);
+  --zen-upload-icon-bg: #E8E0D0;
+  --zen-upload-icon-drag-bg: #D4C9B8;
+  --zen-upload-line-bg: #D4C9B8;
+}
+
+/* Theme: Dark */
+.theme-dark {
+  /* Backgrounds */
+  --zen-bg: #0f0f0f;
+  --zen-bg-secondary: #1a1a1a;
+  --zen-reader-bg: #0f0f0f;
+  
+  /* Text */
+  --zen-heading: #f5f5f4;
+  --zen-text: #e7e5e4;
+  --zen-text-muted: #a8a29e;
+  
+  /* Borders & Accents */
+  --zen-border: rgba(255, 255, 255, 0.1);
+  --zen-accent-bg: rgba(255, 255, 255, 0.05);
+  
+  /* Cards */
+  --zen-card-bg: rgba(30, 30, 30, 0.6);
+  --zen-card-solid-bg: #1f1f1f;
+  --zen-card-hover-gradient: linear-gradient(to top, rgba(20,20,20,0.95), transparent);
+  
+  /* Inputs */
+  --zen-input-bg: #1a1a1a;
+  
+  /* Placeholders */
+  --zen-placeholder-bg: #262626;
+  --zen-placeholder-border: #404040;
+  --zen-placeholder-text: #525252;
+  
+  /* Progress bar */
+  --zen-progress-bg: #262626;
+  --zen-progress-fill: #a8a29e;
+  
+  /* Logo */
+  --zen-logo-filter: invert(1) brightness(0.9);
+  
+  /* Translation popup */
+  --zen-translation-bg: rgba(64, 40, 42, 0.6);
+  --zen-translation-border: #7f5456;
+  --zen-translation-text: #e7e5e4;
+  
+  /* Note popup */
+  --zen-note-bg: #1f1f1f;
+  --zen-note-border: #525252;
+  --zen-note-header-bg: #2a2a2a;
+  --zen-note-header-text: #d4d4d4;
+  
+  /* Upload area */
+  --zen-upload-bg: #1a1a1a;
+  --zen-upload-drag-bg: #262626;
+  --zen-upload-hover-gradient: linear-gradient(to bottom right, rgba(127,84,86,0.2), transparent);
+  --zen-upload-icon-bg: #262626;
+  --zen-upload-icon-drag-bg: #333333;
+  --zen-upload-line-bg: #333333;
 }

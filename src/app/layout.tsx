@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
-import { Noto_Serif_JP, Shippori_Mincho } from "next/font/google";
+import { Noto_Serif_JP, Noto_Sans_JP } from "next/font/google";
 import "./globals.css";
+import ThemeProvider from "@/components/ThemeProvider";
 
 const notoSerifJP = Noto_Serif_JP({
   variable: "--font-noto-serif-jp",
@@ -8,15 +9,15 @@ const notoSerifJP = Noto_Serif_JP({
   weight: ["200", "400", "700", "900"],
 });
 
-const shipporiMincho = Shippori_Mincho({
-  variable: "--font-shippori-mincho",
+const notoSansJP = Noto_Sans_JP({
+  variable: "--font-noto-sans-jp",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
+  weight: ["300", "400", "500", "700"],
 });
 
 export const metadata: Metadata = {
-  title: "Zen Reader JP",
-  description: "Immersion through reading",
+  title: "ZenRead JP",
+  description: "Master Japanese through reading immersion",
 };
 
 export default function RootLayout({
@@ -25,11 +26,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className="theme-light">
       <body
-        className={`${notoSerifJP.variable} ${shipporiMincho.variable} antialiased`}
+        className={`${notoSerifJP.variable} ${notoSansJP.variable} antialiased`}
       >
-        {children}
+        <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>
   );

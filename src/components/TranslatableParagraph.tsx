@@ -331,8 +331,14 @@ export default function TranslatableParagraph({
             {/* Translation display */}
             {showTranslation && translation && (
                 <div 
-                    className="py-2 px-4 bg-rose-50/50 border-l-2 border-rose-200 rounded-r-lg text-stone-600 text-base leading-relaxed animate-in fade-in slide-in-from-top-2 duration-300"
-                    style={{ fontFamily: 'system-ui, sans-serif', marginBottom: '2em' }}
+                    className="py-2 px-4 border-l-2 rounded-r-lg text-base leading-relaxed animate-in fade-in slide-in-from-top-2 duration-300"
+                    style={{ 
+                        fontFamily: 'system-ui, sans-serif', 
+                        marginBottom: '2em',
+                        backgroundColor: 'var(--zen-translation-bg, rgba(255, 241, 242, 0.5))',
+                        borderColor: 'var(--zen-translation-border, #fecdd3)',
+                        color: 'var(--zen-translation-text, #57534e)'
+                    }}
                 >
                     {translation}
                 </div>
@@ -344,11 +350,27 @@ export default function TranslatableParagraph({
                     className="absolute -right-3 top-10 w-64 animate-in fade-in slide-in-from-right-2 duration-200 z-10"
                     style={{ marginRight: '-220px' }}
                 >
-                    <div className="bg-white rounded-xl border border-amber-200 shadow-lg shadow-amber-100/50 overflow-hidden">
-                        <div className="px-3 py-2 bg-amber-50 border-b border-amber-100 flex items-center justify-between">
-                            <span className="text-xs font-medium text-amber-700">Note</span>
+                    <div 
+                        className="rounded-xl shadow-lg overflow-hidden"
+                        style={{ 
+                            backgroundColor: 'var(--zen-note-bg, white)',
+                            borderWidth: '1px',
+                            borderStyle: 'solid',
+                            borderColor: 'var(--zen-note-border, #fcd34d)'
+                        }}
+                    >
+                        <div 
+                            className="px-3 py-2 flex items-center justify-between"
+                            style={{
+                                backgroundColor: 'var(--zen-note-header-bg, #fef3c7)',
+                                borderBottomWidth: '1px',
+                                borderBottomStyle: 'solid',
+                                borderBottomColor: 'var(--zen-note-border, #fde68a)'
+                            }}
+                        >
+                            <span className="text-xs font-medium" style={{ color: 'var(--zen-note-header-text, #b45309)' }}>Note</span>
                             {isNoteSaving && (
-                                <span className="text-xs text-amber-500">Saving...</span>
+                                <span className="text-xs" style={{ color: 'var(--zen-note-header-text, #d97706)' }}>Saving...</span>
                             )}
                         </div>
                         <textarea
@@ -358,8 +380,13 @@ export default function TranslatableParagraph({
                             onBlur={handleNoteBlur}
                             onKeyDown={handleNoteKeyDown}
                             placeholder="Write your note..."
-                            className="w-full p-3 text-sm text-stone-700 placeholder:text-stone-400 resize-none focus:outline-none"
-                            style={{ minHeight: '80px', fontFamily: 'system-ui, sans-serif' }}
+                            className="w-full p-3 text-sm resize-none focus:outline-none"
+                            style={{ 
+                                minHeight: '80px', 
+                                fontFamily: 'system-ui, sans-serif',
+                                backgroundColor: 'var(--zen-note-bg, white)',
+                                color: 'var(--zen-text, #44403c)',
+                            }}
                         />
                     </div>
                 </div>

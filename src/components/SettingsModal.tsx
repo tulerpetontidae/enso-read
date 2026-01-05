@@ -6,7 +6,7 @@ import { IoClose, IoEye, IoEyeOff } from 'react-icons/io5';
 
 export const FONT_OPTIONS = [
     { value: 'noto-serif', label: 'Noto Serif JP', fontFamily: 'var(--font-noto-serif-jp), serif' },
-    { value: 'shippori', label: 'Shippori Mincho', fontFamily: 'var(--font-shippori-mincho), serif' },
+    { value: 'noto-sans', label: 'Noto Sans JP', fontFamily: 'var(--font-noto-sans-jp), sans-serif' },
 ];
 
 export const WIDTH_OPTIONS = [
@@ -14,6 +14,18 @@ export const WIDTH_OPTIONS = [
     { value: 'medium', label: 'Medium', maxWidth: '768px' },
     { value: 'wide', label: 'Wide', maxWidth: '960px' },
 ];
+
+export const THEME_OPTIONS = [
+    { value: 'light', label: 'Light', preview: 'bg-[#FDFBF7] border-stone-200' },
+    { value: 'sepia', label: 'Sepia', preview: 'bg-[#F5F0E6] border-amber-200' },
+    { value: 'dark', label: 'Dark', preview: 'bg-[#0a0a0a] border-stone-700' },
+];
+
+// Apply theme to document
+export function applyTheme(theme: string) {
+    document.documentElement.classList.remove('theme-light', 'theme-sepia', 'theme-dark');
+    document.documentElement.classList.add(`theme-${theme}`);
+}
 
 interface SettingsModalProps {
     isOpen: boolean;
@@ -26,6 +38,7 @@ export default function SettingsModal({ isOpen, onClose, onSettingsChange }: Set
     const [showKey, setShowKey] = useState(false);
     const [selectedFont, setSelectedFont] = useState('noto-serif');
     const [selectedWidth, setSelectedWidth] = useState('medium');
+    const [selectedTheme, setSelectedTheme] = useState('light');
     const [isSaving, setIsSaving] = useState(false);
     const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
@@ -34,14 +47,16 @@ export default function SettingsModal({ isOpen, onClose, onSettingsChange }: Set
         if (isOpen) {
             const loadSettings = async () => {
                 try {
-                    const [apiKeySetting, fontSetting, widthSetting] = await Promise.all([
+                    const [apiKeySetting, fontSetting, widthSetting, themeSetting] = await Promise.all([
                         db.settings.get('openai_api_key'),
                         db.settings.get('reader_font'),
                         db.settings.get('reader_width'),
+                        db.settings.get('theme'),
                     ]);
                     if (apiKeySetting?.value) setApiKey(apiKeySetting.value);
                     if (fontSetting?.value) setSelectedFont(fontSetting.value);
                     if (widthSetting?.value) setSelectedWidth(widthSetting.value);
+                    if (themeSetting?.value) setSelectedTheme(themeSetting.value);
                 } catch (e) {
                     console.error('Failed to load settings:', e);
                 }
@@ -59,7 +74,9 @@ export default function SettingsModal({ isOpen, onClose, onSettingsChange }: Set
                 db.settings.put({ key: 'openai_api_key', value: apiKey.trim() }),
                 db.settings.put({ key: 'reader_font', value: selectedFont }),
                 db.settings.put({ key: 'reader_width', value: selectedWidth }),
+                db.settings.put({ key: 'theme', value: selectedTheme }),
             ]);
+            applyTheme(selectedTheme);
             setSaveMessage('Settings saved successfully!');
             onSettingsChange?.();
             setTimeout(() => {
@@ -145,6 +162,27 @@ export default function SettingsModal({ isOpen, onClose, onSettingsChange }: Set
                                         }`}
                                     >
                                         {width.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Theme Selection */}
+                        <div className="space-y-2">
+                            <label className="block text-sm font-medium text-stone-700">Theme</label>
+                            <div className="flex gap-2">
+                                {THEME_OPTIONS.map((theme) => (
+                                    <button
+                                        key={theme.value}
+                                        onClick={() => setSelectedTheme(theme.value)}
+                                        className={`flex-1 px-4 py-3 rounded-xl border-2 text-sm transition-all flex flex-col items-center gap-2 ${
+                                            selectedTheme === theme.value
+                                                ? 'border-rose-400 ring-2 ring-rose-200'
+                                                : 'border-stone-200 hover:border-stone-300'
+                                        }`}
+                                    >
+                                        <div className={`w-8 h-8 rounded-full border-2 ${theme.preview}`} />
+                                        <span className="text-stone-600">{theme.label}</span>
                                     </button>
                                 ))}
                             </div>

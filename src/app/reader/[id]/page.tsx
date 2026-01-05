@@ -305,14 +305,15 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
     }, [sections, id]);
 
     return (
-        <div className="fixed inset-0 flex flex-col bg-[#FDFBF7]">
-            <header className="h-14 flex items-center justify-between px-4 shrink-0 border-b border-stone-100 relative z-10 transition-colors">
-                <Link href="/" className="p-2 text-stone-400 hover:text-stone-900 transition-colors">
+        <div className="fixed inset-0 flex flex-col" style={{ backgroundColor: 'var(--zen-reader-bg, #FDFBF7)' }}>
+            <header className="h-14 flex items-center justify-between px-4 shrink-0 border-b relative z-10 transition-colors" style={{ borderColor: 'var(--zen-border, rgba(0,0,0,0.1))' }}>
+                <Link href="/" className="p-2 transition-colors" style={{ color: 'var(--zen-text-muted, #78716c)' }}>
                     <FaChevronLeft size={16} />
                 </Link>
                 <button
                     onClick={() => setIsSettingsOpen(true)}
-                    className="p-2 text-stone-400 hover:text-stone-900 transition-colors"
+                    className="p-2 transition-colors"
+                    style={{ color: 'var(--zen-text-muted, #78716c)' }}
                     title="Settings"
                 >
                     <IoSettingsOutline size={18} />
@@ -325,7 +326,7 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
             >
                 {isLoading && (
                     <div className="flex items-center justify-center h-full">
-                        <div className="w-6 h-6 border-t-2 border-stone-400 rounded-full animate-spin" />
+                        <div className="w-6 h-6 border-t-2 rounded-full animate-spin" style={{ borderColor: 'var(--zen-text-muted, #78716c)' }} />
                     </div>
                 )}
                 <div 
@@ -340,7 +341,7 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
                                 fontFamily: currentFont.fontFamily,
                                 fontSize: '20px',
                                 lineHeight: '1.9',
-                                color: '#1a1a1a',
+                                color: 'var(--zen-text, #1a1a1a)',
                                 padding: '10px 40px',
                                 textAlign: 'left',
                                 wordBreak: 'break-word'
@@ -352,14 +353,14 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
                 </div>
             </main>
 
-            <footer className="flex flex-col shrink-0 px-10 pt-[2px] pb-3 border-t border-stone-100">
-                <div className="w-full h-0.75 bg-stone-100 relative overflow-hidden rounded">
+            <footer className="flex flex-col shrink-0 px-10 pt-[2px] pb-3 border-t" style={{ borderColor: 'var(--zen-border, rgba(0,0,0,0.06))' }}>
+                <div className="w-full h-0.75 relative overflow-hidden rounded" style={{ backgroundColor: 'var(--zen-progress-bg, #e7e5e4)' }}>
                     <div
-                        className="h-full bg-rose-400/50 absolute left-0 transition-all duration-700 ease-out"
-                        style={{ width: `${progress}%` }}
+                        className="h-full absolute left-0 transition-all duration-700 ease-out"
+                        style={{ width: `${progress}%`, backgroundColor: 'var(--zen-progress-fill, #78716c)' }}
                     />
                 </div>
-                <div className="mt-2 text-center font-serif text-[14px] text-stone-400 tracking-[0.3em] uppercase opacity-70">
+                <div className="mt-2 text-center font-serif text-[14px] tracking-[0.3em] uppercase opacity-70" style={{ color: 'var(--zen-text-muted, #a8a29e)' }}>
                     {progress}%
                 </div>
             </footer>
@@ -387,7 +388,7 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
                     margin-top: 2.5em;
                     margin-bottom: 1.5em;
                     line-height: 1.4;
-                    color: #000;
+                    color: var(--zen-heading, #1c1917);
                     text-align: center;
                 }
                 /* Hide SVG containers if they wrap images but have fixed sizes */
