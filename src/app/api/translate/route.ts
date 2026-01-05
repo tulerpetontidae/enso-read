@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
                 'Authorization': `Bearer ${apiKey}`,
             },
             body: JSON.stringify({
-                model: 'gpt-4o-mini',
+                model: 'gpt-5.2',
                 messages: [
                     {
                         role: 'system',
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
                     }
                 ],
                 temperature: 0.3,
-                max_tokens: 1000,
+                max_completion_tokens: 1000,
             }),
         });
 
