@@ -12,7 +12,8 @@
   <a href="https://zen-read-jp.vercel.app">zen-read-jp.vercel.app</a>
 </p>
 
----
+
+
 
 ## Philosophy
 
@@ -20,11 +21,14 @@ Reading is one of the best ways to improve language comprehension — yet it can
 
 Follow these principles to get the most out of it:
 
-**Translate to verify, not to cheat.** Read a paragraph, form your understanding, then check the translation to confirm you got it right. This active process builds real comprehension.
+***Translate to verify, not to cheat.***
+Read a paragraph first and form your own interpretation. Only then consult the translation to confirm or correct your understanding. This order enforces active reading and prevents dependence.
 
-**Leave notes for your future self.** Mark tricky grammar, save useful vocabulary, or jot down questions for your next langauge lesson. Your annotations stay with the text, ready when you return.
+***Leave notes for your future self.***
+Mark difficult grammar, save useful vocabulary, and record questions for your next language lesson. Your annotations persist with the text and compound over time.
 
----
+
+
 
 ## Features
 
@@ -34,7 +38,14 @@ Follow these principles to get the most out of it:
 - **Progress Memory** — Automatically saves your position in each book
 - **Offline Storage** — Everything stored in your browser
 
----
+
+
+## Recommended
+
+For instant word lookups, pair with the [10ten Japanese Reader](https://github.com/birchill/10ten-ja-reader) browser extension.
+
+
+
 
 ## Local Deploy
 
@@ -45,19 +56,14 @@ npm run dev
 
 Open [localhost:3000](http://localhost:3000), drop in an EPUB, and start reading.
 
----
 
-## Recommended
 
-For instant word lookups, pair with the [10ten Japanese Reader](https://github.com/birchill/10ten-ja-reader) browser extension.
-
----
 
 ## Tech
 
 Next.js · React · Tailwind CSS · Dexie (IndexedDB) · epub.js · OpenAI
 
----
+
 
 <p align="center">
   <sub>MIT License</sub>
