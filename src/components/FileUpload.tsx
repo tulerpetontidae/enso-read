@@ -98,13 +98,15 @@ async function extractCoverImage(arrayBuffer: ArrayBuffer): Promise<string | und
                                         // Try alternative paths if not found
                                         if (!zipFile) {
                                             const filename = imagePath.split('/').pop();
-                                            // @ts-ignore
-                                            const files = Object.keys(book.archive.zip.files);
-                                            const match = files.find(f => f.endsWith(filename));
-                                            if (match) {
-                                                console.log('Found alternative path:', match);
+                                            if (filename) {
                                                 // @ts-ignore
-                                                zipFile = book.archive.zip.file(match);
+                                                const files = Object.keys(book.archive.zip.files);
+                                                const match = files.find((f: string) => f.endsWith(filename));
+                                                if (match) {
+                                                    console.log('Found alternative path:', match);
+                                                    // @ts-ignore
+                                                    zipFile = book.archive.zip.file(match);
+                                                }
                                             }
                                         }
                                         
