@@ -99,6 +99,36 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
     const currentWidth = WIDTH_OPTIONS.find(w => w.value === readerWidth) || WIDTH_OPTIONS[1];
     const currentFontSize = FONT_SIZE_OPTIONS.find(s => s.value === readerFontSize) || FONT_SIZE_OPTIONS[1];
 
+    // Helper function to check if an element should be treated as a paragraph
+    const isParagraphElement = (domNode: Element): boolean => {
+        const tagName = domNode.name.toLowerCase();
+        
+        // Check in priority order: p, div.paragraph, blockquote, li
+        if (tagName === 'p') return true;
+        if (tagName === 'div' && domNode.attribs?.class?.includes('paragraph')) return true;
+        if (tagName === 'blockquote') return true;
+        if (tagName === 'li') return true;
+        
+        return false;
+    };
+
+    // Helper function to get the appropriate wrapper element
+    const getParagraphWrapper = (domNode: Element, children: React.ReactNode) => {
+        const tagName = domNode.name.toLowerCase();
+        
+        if (tagName === 'p') {
+            return <p>{children}</p>;
+        } else if (tagName === 'div' && domNode.attribs?.class?.includes('paragraph')) {
+            return <div className={domNode.attribs.class}>{children}</div>;
+        } else if (tagName === 'blockquote') {
+            return <blockquote>{children}</blockquote>;
+        } else if (tagName === 'li') {
+            return <li>{children}</li>;
+        }
+        
+        return <p>{children}</p>; // Fallback
+    };
+
     // Parser options to wrap paragraphs with TranslatableParagraph
     const parserOptions: HTMLReactParserOptions = useMemo(() => ({
         replace: (domNode) => {
@@ -113,8 +143,8 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
                     return <>{domToReact(domNode.children as DOMNode[], parserOptions)}</>;
                 }
                 
-                // Wrap paragraphs with TranslatableParagraph
-                if (domNode.name === 'p') {
+                // Wrap paragraph-like elements with TranslatableParagraph
+                if (isParagraphElement(domNode)) {
                     const children = domToReact(domNode.children as DOMNode[], parserOptions);
                     const textContent = getTextContent(children);
                     
@@ -129,7 +159,7 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
                                 zenMode={zenMode}
                                 onNoteChange={() => setNotesVersion(prev => prev + 1)}
                             >
-                                <p>{children}</p>
+                                {getParagraphWrapper(domNode, children)}
                             </TranslatableParagraph>
                         );
                     }
@@ -610,6 +640,13 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
             <style jsx global>{`
                 .epub-section p {
                     margin-bottom: 2em;
+                    text-indent: 0 !important;
+                    margin-left: 0 !important;
+                    padding-left: 0 !important;
+                }
+                .epub-section div.paragraph {
+                    margin-top: 2.5em;
+                    margin-bottom: 2.5em;
                     text-indent: 0 !important;
                     margin-left: 0 !important;
                     padding-left: 0 !important;
