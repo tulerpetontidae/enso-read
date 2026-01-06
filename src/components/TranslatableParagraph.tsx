@@ -21,12 +21,18 @@ interface TranslatableParagraphProps {
     children: React.ReactNode;
     bookId: string;
     paragraphText: string;
+    showAllTranslations?: boolean;
+    showAllComments?: boolean;
+    zenMode?: boolean;
 }
 
 export default function TranslatableParagraph({ 
     children, 
     bookId, 
-    paragraphText 
+    paragraphText,
+    showAllTranslations = false,
+    showAllComments = false,
+    zenMode = false
 }: TranslatableParagraphProps) {
     // Hover state
     const [isHovered, setIsHovered] = useState(false);
@@ -44,6 +50,7 @@ export default function TranslatableParagraph({
     const [savedNoteContent, setSavedNoteContent] = useState('');
     const [isNoteOpen, setIsNoteOpen] = useState(false);
     const [isNoteSaving, setIsNoteSaving] = useState(false);
+    const [noteHeight, setNoteHeight] = useState(80); // Default height in pixels
     
     const containerRef = useRef<HTMLDivElement>(null);
     const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -67,6 +74,10 @@ export default function TranslatableParagraph({
                 if (cachedNote) {
                     setNoteContent(cachedNote.content);
                     setSavedNoteContent(cachedNote.content);
+                    // Restore note height if saved
+                    if (cachedNote.height) {
+                        setNoteHeight(cachedNote.height);
+                    }
                 }
             } catch (e) {
                 console.error('Failed to load cached data:', e);
@@ -74,6 +85,32 @@ export default function TranslatableParagraph({
         };
         loadCachedData();
     }, [translationId, noteId]);
+    
+    // Track if user manually toggled translation
+    const [manuallyToggledTranslation, setManuallyToggledTranslation] = useState(false);
+    
+    // Show translation if showAllTranslations is true and translation exists
+    useEffect(() => {
+        if (showAllTranslations && translation) {
+            setShowTranslation(true);
+        } else if (!showAllTranslations) {
+            // Hide if "show all" is off (unless manually toggled, but we'll reset that)
+            setShowTranslation(false);
+            setManuallyToggledTranslation(false);
+        }
+    }, [showAllTranslations, translation]);
+    
+    // Show note if showAllComments is true and note exists
+    useEffect(() => {
+        if (showAllComments && savedNoteContent) {
+            setIsNoteOpen(true);
+        } else if (!showAllComments) {
+            // Hide if "show all" is off (only if there's no active editing)
+            if (!noteContent.trim() || noteContent === savedNoteContent) {
+                setIsNoteOpen(false);
+            }
+        }
+    }, [showAllComments, savedNoteContent]);
 
     const handleMouseEnter = () => {
         if (hoverTimeoutRef.current) {
@@ -126,6 +163,7 @@ export default function TranslatableParagraph({
         // If we already have a translation, just toggle display
         if (translation) {
             setShowTranslation(!showTranslation);
+            setManuallyToggledTranslation(!showTranslation); // Track manual toggle
             return;
         }
 
@@ -244,6 +282,7 @@ export default function TranslatableParagraph({
                     bookId,
                     paragraphHash,
                     content: noteContent,
+                    height: noteHeight,
                     createdAt: savedNoteContent ? Date.now() : Date.now(),
                     updatedAt: Date.now(),
                 });
@@ -282,31 +321,41 @@ export default function TranslatableParagraph({
         <div 
             ref={containerRef}
             className="relative"
+            data-paragraph-hash={paragraphHash}
             style={{ marginLeft: '-60px', marginRight: '-60px', paddingLeft: '60px', paddingRight: '60px' }}
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
         >
-            {/* Translation button - left side */}
-            <button
-                onClick={handleTranslate}
-                onMouseEnter={handleButtonMouseEnter}
-                onMouseLeave={handleButtonMouseLeave}
-                disabled={isLoading}
-                className={`
-                    absolute -left-3 top-1 
-                    w-8 h-8 
-                    flex items-center justify-center 
-                    rounded-full 
-                    transition-all duration-300 ease-out
-                    ${showButtons ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-2'}
-                    ${hasTranslation 
-                        ? 'bg-emerald-100 border-2 border-emerald-300 text-emerald-600 hover:bg-emerald-200 hover:border-emerald-400 hover:shadow-lg hover:shadow-emerald-100' 
-                        : 'bg-white border border-stone-200 text-stone-500 hover:border-rose-300 hover:text-rose-500 hover:shadow-lg hover:shadow-rose-100'}
-                    ${isLoading ? 'animate-pulse' : ''}
-                    focus:outline-none focus:ring-2 focus:ring-rose-200
-                `}
+            {/* Translation button - left side (hidden in zen mode) */}
+            {!zenMode && (
+                <button
+                    onClick={handleTranslate}
+                    onMouseEnter={handleButtonMouseEnter}
+                    onMouseLeave={handleButtonMouseLeave}
+                    disabled={isLoading}
+                    className={`
+                        absolute -left-3 top-1 
+                        w-8 h-8 
+                        flex items-center justify-center 
+                        rounded-full 
+                        transition-all duration-300 ease-out
+                        ${showButtons ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-2'}
+                        ${isLoading ? 'animate-pulse' : ''}
+                        focus:outline-none focus:ring-2 focus:ring-rose-200
+                    `}
                 style={{
                     boxShadow: showButtons ? '0 4px 12px rgba(0,0,0,0.08)' : 'none',
+                    backgroundColor: hasTranslation 
+                        ? 'var(--zen-translation-btn-active-bg, rgba(16, 185, 129, 0.15))' 
+                        : 'var(--zen-translation-btn-bg, rgba(255, 255, 255, 0.9))',
+                    borderWidth: hasTranslation ? '2px' : '1px',
+                    borderStyle: 'solid',
+                    borderColor: hasTranslation 
+                        ? 'var(--zen-translation-btn-active-border, rgba(16, 185, 129, 0.4))' 
+                        : 'var(--zen-translation-btn-border, rgba(0, 0, 0, 0.1))',
+                    color: hasTranslation 
+                        ? 'var(--zen-translation-btn-active-text, rgba(16, 185, 129, 0.8))' 
+                        : 'var(--zen-translation-btn-text, rgba(0, 0, 0, 0.5))',
                 }}
                 title={hasTranslation ? 'Show/hide translation' : 'Translate paragraph'}
             >
@@ -331,53 +380,72 @@ export default function TranslatableParagraph({
                         <path d="M14 18h6" />
                     </svg>
                 )}
-            </button>
+                </button>
+            )}
 
-            {/* Note button - right side */}
-            <button
-                onClick={handleNoteClick}
-                onMouseEnter={handleNoteButtonMouseEnter}
-                onMouseLeave={handleNoteButtonMouseLeave}
-                className={`
-                    absolute -right-3 top-1 
-                    w-8 h-8 
-                    flex items-center justify-center 
-                    rounded-full 
-                    transition-all duration-300 ease-out
-                    ${(showButtons || hasNote) ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2'}
-                    ${hasNote 
-                        ? 'bg-amber-100 border-2 border-amber-300 text-amber-600 hover:bg-amber-200 hover:border-amber-400 hover:shadow-lg hover:shadow-amber-100' 
-                        : 'bg-white border border-stone-200 text-stone-500 hover:border-amber-300 hover:text-amber-500 hover:shadow-lg hover:shadow-amber-100'}
-                    ${isNoteOpen ? 'ring-2 ring-amber-200' : ''}
-                    focus:outline-none focus:ring-2 focus:ring-amber-200
-                `}
-                style={{
-                    boxShadow: (showButtons || hasNote) ? '0 4px 12px rgba(0,0,0,0.08)' : 'none',
-                }}
-                title={hasNote ? 'Edit note' : 'Add note'}
-            >
-                <svg 
-                    width="14" 
-                    height="14" 
-                    viewBox="0 0 24 24" 
-                    fill="none" 
-                    stroke="currentColor" 
-                    strokeWidth="2" 
-                    strokeLinecap="round" 
-                    strokeLinejoin="round"
+            {/* Note button - right side (hidden in zen mode) */}
+            {!zenMode && (
+                <button
+                    onClick={handleNoteClick}
+                    onMouseEnter={handleNoteButtonMouseEnter}
+                    onMouseLeave={handleNoteButtonMouseLeave}
+                    className={`
+                        absolute -right-3 top-1 
+                        w-8 h-8 
+                        flex items-center justify-center 
+                        rounded-full 
+                        transition-all duration-300 ease-out
+                        ${(showButtons || hasNote) ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2'}
+                        ${isNoteOpen ? 'ring-2' : ''}
+                        focus:outline-none focus:ring-2
+                    `}
+                    style={{
+                        boxShadow: (showButtons || hasNote) ? '0 4px 12px rgba(0,0,0,0.08)' : 'none',
+                        backgroundColor: hasNote 
+                            ? 'var(--zen-note-btn-active-bg, rgba(245, 158, 11, 0.15))' 
+                            : 'var(--zen-note-btn-bg, rgba(255, 255, 255, 0.9))',
+                        borderWidth: hasNote ? '2px' : '1px',
+                        borderStyle: 'solid',
+                        borderColor: hasNote 
+                            ? 'var(--zen-note-btn-active-border, rgba(245, 158, 11, 0.4))' 
+                            : 'var(--zen-note-btn-border, rgba(0, 0, 0, 0.1))',
+                        color: hasNote 
+                            ? 'var(--zen-note-btn-active-text, rgba(245, 158, 11, 0.8))' 
+                            : 'var(--zen-note-btn-text, rgba(0, 0, 0, 0.5))',
+                    }}
+                    onFocus={(e) => {
+                        if (isNoteOpen) {
+                            e.currentTarget.style.boxShadow = '0 0 0 2px var(--zen-note-border, rgba(245, 158, 11, 0.3))';
+                        }
+                    }}
+                    onBlur={(e) => {
+                        e.currentTarget.style.boxShadow = '';
+                    }}
+                    title={hasNote ? 'Edit note' : 'Add note'}
                 >
-                    <path d="M12 20h9" />
-                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-                </svg>
-            </button>
+                    <svg 
+                        width="14" 
+                        height="14" 
+                        viewBox="0 0 24 24" 
+                        fill="none" 
+                        stroke="currentColor" 
+                        strokeWidth="2" 
+                        strokeLinecap="round" 
+                        strokeLinejoin="round"
+                    >
+                        <path d="M12 20h9" />
+                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                    </svg>
+                </button>
+            )}
 
             {/* Original paragraph content - reduce margin when translation shown */}
             <div style={{ marginBottom: showTranslation ? '-22px' : '0' }}>
                 {children}
             </div>
 
-            {/* Translation display */}
-            {showTranslation && translation && (
+            {/* Translation display (hidden in zen mode) */}
+            {!zenMode && showTranslation && translation && (
                 <div 
                     className="relative py-2 pl-4 pr-12 border-l-2 rounded-r-lg text-base leading-relaxed animate-in fade-in slide-in-from-top-2 duration-300"
                     style={{ 
@@ -402,8 +470,8 @@ export default function TranslatableParagraph({
                 </div>
             )}
 
-            {/* Note input area */}
-            {isNoteOpen && (
+            {/* Note input area (hidden in zen mode) */}
+            {!zenMode && isNoteOpen && (
                 <div 
                     className="absolute -right-3 top-10 w-64 animate-in fade-in slide-in-from-right-2 duration-200 z-10"
                     style={{ marginRight: '-220px' }}
@@ -434,13 +502,21 @@ export default function TranslatableParagraph({
                         <textarea
                             ref={noteTextareaRef}
                             value={noteContent}
-                            onChange={(e) => setNoteContent(e.target.value)}
+                            onChange={(e) => {
+                                setNoteContent(e.target.value);
+                                // Auto-resize based on content
+                                if (e.target.scrollHeight > noteHeight) {
+                                    setNoteHeight(Math.min(e.target.scrollHeight, 400)); // Max 400px
+                                }
+                            }}
                             onBlur={handleNoteBlur}
                             onKeyDown={handleNoteKeyDown}
                             placeholder="Write your note..."
-                            className="w-full p-3 text-sm resize-none focus:outline-none"
+                            className="w-full p-3 text-sm resize-y focus:outline-none"
                             style={{ 
-                                minHeight: '80px', 
+                                height: `${noteHeight}px`,
+                                minHeight: '80px',
+                                maxHeight: '400px',
                                 fontFamily: 'system-ui, sans-serif',
                                 backgroundColor: 'var(--zen-note-bg, white)',
                                 color: 'var(--zen-text, #44403c)',

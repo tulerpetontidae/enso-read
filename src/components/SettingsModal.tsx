@@ -8,8 +8,8 @@ import type { TranslationEngine } from '@/lib/translation';
 import { SUPPORTED_LANGUAGES } from '@/lib/languages';
 
 export const FONT_OPTIONS = [
-    { value: 'noto-serif', label: 'Noto Serif JP', fontFamily: 'var(--font-noto-serif-jp), serif' },
-    { value: 'noto-sans', label: 'Noto Sans JP', fontFamily: 'var(--font-noto-sans-jp), sans-serif' },
+    { value: 'serif', label: 'Serif', fontFamily: 'var(--font-noto-serif-jp), "Times New Roman", Times, serif' },
+    { value: 'sans', label: 'Sans Serif', fontFamily: 'var(--font-noto-sans-jp), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' },
 ];
 
 export const WIDTH_OPTIONS = [

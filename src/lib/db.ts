@@ -42,6 +42,7 @@ interface Note {
   bookId: string;
   paragraphHash: string;
   content: string;
+  height?: number; // Height in pixels for resizable notes
   createdAt: number;
   updatedAt: number;
 }

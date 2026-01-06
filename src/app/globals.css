@@ -79,6 +79,22 @@ body {
   --zen-btn-text: #57534e;
   --zen-btn-hover-border: #d6d3d1;
   
+  /* Translation button */
+  --zen-translation-btn-bg: rgba(255, 255, 255, 0.9);
+  --zen-translation-btn-border: rgba(0, 0, 0, 0.1);
+  --zen-translation-btn-text: rgba(0, 0, 0, 0.5);
+  --zen-translation-btn-active-bg: rgba(16, 185, 129, 0.15);
+  --zen-translation-btn-active-border: rgba(16, 185, 129, 0.4);
+  --zen-translation-btn-active-text: rgba(16, 185, 129, 0.8);
+  
+  /* Note button */
+  --zen-note-btn-bg: rgba(255, 255, 255, 0.9);
+  --zen-note-btn-border: rgba(0, 0, 0, 0.1);
+  --zen-note-btn-text: rgba(0, 0, 0, 0.5);
+  --zen-note-btn-active-bg: rgba(245, 158, 11, 0.15);
+  --zen-note-btn-active-border: rgba(245, 158, 11, 0.4);
+  --zen-note-btn-active-text: rgba(245, 158, 11, 0.8);
+  
   /* Info cards */
   --zen-info-bg: #fafaf9;
   --zen-info-border: #f5f5f4;
@@ -151,6 +167,22 @@ body {
   --zen-btn-border: #D4C9B8;
   --zen-btn-text: #6B5D4D;
   --zen-btn-hover-border: #C4B8A5;
+  
+  /* Translation button */
+  --zen-translation-btn-bg: rgba(237, 230, 214, 0.9);
+  --zen-translation-btn-border: rgba(107, 93, 77, 0.3);
+  --zen-translation-btn-text: rgba(107, 93, 77, 0.6);
+  --zen-translation-btn-active-bg: rgba(16, 185, 129, 0.2);
+  --zen-translation-btn-active-border: rgba(16, 185, 129, 0.5);
+  --zen-translation-btn-active-text: rgba(16, 185, 129, 0.8);
+  
+  /* Note button */
+  --zen-note-btn-bg: rgba(237, 230, 214, 0.9);
+  --zen-note-btn-border: rgba(107, 93, 77, 0.3);
+  --zen-note-btn-text: rgba(107, 93, 77, 0.6);
+  --zen-note-btn-active-bg: rgba(245, 158, 11, 0.2);
+  --zen-note-btn-active-border: rgba(245, 158, 11, 0.5);
+  --zen-note-btn-active-text: rgba(245, 158, 11, 0.8);
   
   /* Info cards */
   --zen-info-bg: #E8E0D0;
@@ -234,6 +266,22 @@ body {
   --zen-recommend-border: #333333;
   --zen-recommend-text: #a8a29e;
   --zen-recommend-heading: #d4d4d4;
+  
+  /* Translation button */
+  --zen-translation-btn-bg: rgba(40, 40, 40, 0.9);
+  --zen-translation-btn-border: rgba(100, 100, 100, 0.3);
+  --zen-translation-btn-text: rgba(200, 200, 200, 0.6);
+  --zen-translation-btn-active-bg: rgba(16, 185, 129, 0.2);
+  --zen-translation-btn-active-border: rgba(16, 185, 129, 0.5);
+  --zen-translation-btn-active-text: rgba(16, 185, 129, 0.9);
+  
+  /* Note button */
+  --zen-note-btn-bg: rgba(40, 40, 40, 0.9);
+  --zen-note-btn-border: rgba(100, 100, 100, 0.3);
+  --zen-note-btn-text: rgba(200, 200, 200, 0.6);
+  --zen-note-btn-active-bg: rgba(245, 158, 11, 0.2);
+  --zen-note-btn-active-border: rgba(245, 158, 11, 0.5);
+  --zen-note-btn-active-text: rgba(245, 158, 11, 0.9);
 }
 
 /* Animations */

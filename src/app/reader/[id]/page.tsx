@@ -5,6 +5,7 @@ import { db } from '@/lib/db';
 import ePub, { Book } from 'epubjs';
 import { FaChevronLeft } from 'react-icons/fa';
 import { IoSettingsOutline } from 'react-icons/io5';
+import { IoMoonOutline, IoMoon } from 'react-icons/io5';
 import Link from 'next/link';
 import parse, { domToReact, HTMLReactParserOptions, Element, DOMNode } from 'html-react-parser';
 import TranslatableParagraph from '@/components/TranslatableParagraph';
@@ -61,9 +62,16 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
     const [isLoading, setIsLoading] = useState(true);
     const [sections, setSections] = useState<Array<{ id: string, html: string }>>([]);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-    const [readerFont, setReaderFont] = useState('noto-serif');
+    const [readerFont, setReaderFont] = useState('serif');
     const [readerWidth, setReaderWidth] = useState('medium');
     const [readerFontSize, setReaderFontSize] = useState('medium');
+    const [bookTitle, setBookTitle] = useState<string>('');
+    const [showAllTranslations, setShowAllTranslations] = useState(false);
+    const [showAllComments, setShowAllComments] = useState(false);
+    const [commentPositions, setCommentPositions] = useState<Array<{ top: number; height: number }>>([]);
+    const [showCommentIndicators, setShowCommentIndicators] = useState(false); // Toggle: ON = show on scroll, OFF = never show
+    const [indicatorsVisible, setIndicatorsVisible] = useState(false); // Actual visibility state (for auto-hide)
+    const [zenMode, setZenMode] = useState(false);
 
     // Load reader settings
     const loadReaderSettings = useCallback(async () => {
@@ -115,6 +123,9 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
                             <TranslatableParagraph 
                                 bookId={id} 
                                 paragraphText={textContent}
+                                showAllTranslations={showAllTranslations}
+                                showAllComments={showAllComments}
+                                zenMode={zenMode}
                             >
                                 <p>{children}</p>
                             </TranslatableParagraph>
@@ -124,7 +135,7 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
             }
             return undefined;
         }
-    }), [id]);
+    }), [id, showAllTranslations, showAllComments]);
 
     useEffect(() => {
         let bookInstance: Book | null = null;
@@ -134,6 +145,11 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
             try {
                 const bookData = await db.books.get(id);
                 if (!bookData?.data) return;
+                
+                // Set book title
+                if (bookData.title) {
+                    setBookTitle(bookData.title);
+                }
 
                 // @ts-ignore
                 bookInstance = ePub(bookData.data);
@@ -294,43 +310,247 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
             saveScrollPosition(pct);
         }, 1000);
 
-        const handleScroll = debounce(() => {
+        let hideTimeout: NodeJS.Timeout | null = null;
+
+        const handleScroll = () => {
             if (containerRef.current) {
                 const container = containerRef.current;
                 const pct = (container.scrollTop / (container.scrollHeight - container.clientHeight)) * 100;
                 const roundedPct = Math.round(Math.min(100, Math.max(0, pct)));
                 setProgress(roundedPct);
                 debouncedSave(roundedPct);
+
+                // Show indicators on scroll if toggle is ON
+                if (showCommentIndicators) {
+                    setIndicatorsVisible(true);
+
+                    // Hide after 1 second of no scrolling
+                    if (hideTimeout) clearTimeout(hideTimeout);
+                    hideTimeout = setTimeout(() => {
+                        setIndicatorsVisible(false);
+                    }, 1000);
+                }
             }
-        }, 200);
+        };
 
         const container = containerRef.current;
         if (container) {
             container.addEventListener('scroll', handleScroll);
-            return () => container.removeEventListener('scroll', handleScroll);
+            return () => {
+                container.removeEventListener('scroll', handleScroll);
+                if (hideTimeout) clearTimeout(hideTimeout);
+            };
         }
+    }, [id, showCommentIndicators]); // Removed sections to keep dependency array stable
+    
+    // Track comment positions for scrollbar indicators (static, relative to document)
+    useEffect(() => {
+        const updateCommentPositions = async () => {
+            if (!containerRef.current || sections.length === 0) return;
+            
+            try {
+                // Get all notes for this book
+                const allNotes = await db.notes.where('bookId').equals(id).toArray();
+                if (allNotes.length === 0) {
+                    setCommentPositions([]);
+                    return;
+                }
+                
+                // Find paragraph elements with notes
+                const container = containerRef.current;
+                const positions: Array<{ top: number; height: number }> = [];
+                
+                // Query all TranslatableParagraph containers
+                const paragraphContainers = container.querySelectorAll('[data-paragraph-hash]');
+                paragraphContainers.forEach((el) => {
+                    const hash = el.getAttribute('data-paragraph-hash');
+                    if (hash && allNotes.some(note => note.paragraphHash === hash)) {
+                        // Get absolute position within the scrollable container (relative to document top)
+                        const rect = el.getBoundingClientRect();
+                        const containerRect = container.getBoundingClientRect();
+                        const scrollTop = container.scrollTop;
+                        
+                        // Calculate position relative to document top within container
+                        const absoluteTop = rect.top - containerRect.top + scrollTop;
+                        
+                        positions.push({
+                            top: absoluteTop,
+                            height: rect.height,
+                        });
+                    }
+                });
+                
+                setCommentPositions(positions);
+            } catch (e) {
+                console.error('Failed to update comment positions:', e);
+            }
+        };
+        
+        // Update positions when sections change or after content loads
+        const timeout = setTimeout(updateCommentPositions, 1000);
+        
+        return () => clearTimeout(timeout);
     }, [sections, id]);
 
     return (
         <div className="fixed inset-0 flex flex-col" style={{ backgroundColor: 'var(--zen-reader-bg, #FDFBF7)' }}>
+            {/* Header - always visible */}
             <header className="h-14 flex items-center justify-between px-4 shrink-0 border-b relative z-10 transition-colors" style={{ borderColor: 'var(--zen-border, rgba(0,0,0,0.1))' }}>
-                <Link href="/" className="p-2 transition-colors" style={{ color: 'var(--zen-text-muted, #78716c)' }}>
-                    <FaChevronLeft size={16} />
-                </Link>
-                <button
-                    onClick={() => setIsSettingsOpen(true)}
-                    className="p-2 transition-colors"
-                    style={{ color: 'var(--zen-text-muted, #78716c)' }}
-                    title="Settings"
-                >
-                    <IoSettingsOutline size={18} />
-                </button>
+                {/* Left side - back button and title (hidden in zen mode) */}
+                <div className={`flex items-center flex-1 transition-opacity duration-300 ${zenMode ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+                    <Link href="/" className="p-2 transition-colors" style={{ color: 'var(--zen-text-muted, #78716c)' }}>
+                        <FaChevronLeft size={16} />
+                    </Link>
+                    {bookTitle && (
+                        <h1 className="flex-1 text-center font-serif font-medium text-sm truncate px-4" style={{ color: 'var(--zen-heading, #1c1917)' }}>
+                            {bookTitle}
+                        </h1>
+                    )}
+                </div>
+
+                {/* Right side - all buttons */}
+                <div className="flex items-center gap-2">
+                    {/* Show all translations button (hidden in zen mode) */}
+                    {!zenMode && (
+                        <button
+                            onClick={() => setShowAllTranslations(!showAllTranslations)}
+                            className="p-1.5 transition-colors rounded"
+                            style={{ 
+                                color: showAllTranslations ? 'var(--zen-text, #1c1917)' : 'var(--zen-text-muted, #78716c)',
+                                backgroundColor: showAllTranslations ? 'var(--zen-accent-bg, rgba(255,255,255,0.5))' : 'transparent'
+                            }}
+                            title="Show all translations"
+                        >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M5 8l6 6" />
+                                <path d="M4 14l6-6 2-3" />
+                                <path d="M2 5h12" />
+                                <path d="M7 2h1" />
+                                <path d="M22 22l-5-10-5 10" />
+                                <path d="M14 18h6" />
+                            </svg>
+                        </button>
+                    )}
+                    {/* Show all comments button (hidden in zen mode) */}
+                    {!zenMode && (
+                        <button
+                            onClick={() => setShowAllComments(!showAllComments)}
+                            className="p-1.5 transition-colors rounded"
+                            style={{ 
+                                color: showAllComments ? 'var(--zen-text, #1c1917)' : 'var(--zen-text-muted, #78716c)',
+                                backgroundColor: showAllComments ? 'var(--zen-accent-bg, rgba(255,255,255,0.5))' : 'transparent'
+                            }}
+                            title="Show all comments"
+                        >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M12 20h9" />
+                                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                            </svg>
+                        </button>
+                    )}
+                    {/* Show comment indicators button (hidden in zen mode) */}
+                    {!zenMode && (
+                        <button
+                            onClick={() => setShowCommentIndicators(!showCommentIndicators)}
+                            className="p-1.5 transition-colors rounded"
+                            style={{ 
+                                color: showCommentIndicators ? 'var(--zen-text, #1c1917)' : 'var(--zen-text-muted, #78716c)',
+                                backgroundColor: showCommentIndicators ? 'var(--zen-accent-bg, rgba(255,255,255,0.5))' : 'transparent'
+                            }}
+                            title="Show comment markers on scrollbar"
+                        >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                                <line x1="9" y1="9" x2="15" y2="9" />
+                                <line x1="9" y1="15" x2="15" y2="15" />
+                            </svg>
+                        </button>
+                    )}
+                    {/* Zen mode button - always visible */}
+                    <button
+                        onClick={() => setZenMode(!zenMode)}
+                        className="p-2 transition-colors rounded-full"
+                        style={{ 
+                            color: zenMode ? 'var(--zen-text, #1c1917)' : 'var(--zen-text-muted, #78716c)',
+                            backgroundColor: zenMode ? 'var(--zen-accent-bg, rgba(255,255,255,0.8))' : 'transparent'
+                        }}
+                        title="Zen mode"
+                    >
+                        {zenMode ? <IoMoon size={18} /> : <IoMoonOutline size={18} />}
+                    </button>
+                    {/* Settings button - always visible */}
+                    <button
+                        onClick={() => setIsSettingsOpen(true)}
+                        className="p-2 transition-colors rounded-full"
+                        style={{ 
+                            color: 'var(--zen-text-muted, #78716c)',
+                            backgroundColor: 'transparent'
+                        }}
+                        title="Settings"
+                    >
+                        <IoSettingsOutline size={18} />
+                    </button>
+                </div>
             </header>
 
             <main
                 ref={containerRef}
-                className="flex-1 min-h-0 overflow-y-auto scroll-smooth"
+                className="flex-1 min-h-0 overflow-y-auto scroll-smooth relative"
+                style={{
+                    scrollbarWidth: 'thin',
+                    scrollbarColor: 'var(--zen-progress-bg, #e7e5e4) transparent',
+                }}
             >
+                {/* Scrollbar indicators for comments - static markers on scrollbar track (hidden in zen mode, shown on scroll if toggle is ON) */}
+                {!zenMode && showCommentIndicators && indicatorsVisible && commentPositions.length > 0 && containerRef.current && (() => {
+                    const container = containerRef.current;
+                    if (!container) return null;
+                    
+                    const containerRect = container.getBoundingClientRect();
+                    const scrollHeight = container.scrollHeight;
+                    const clientHeight = container.clientHeight;
+                    
+                    if (scrollHeight <= clientHeight) return null; // No scrollbar needed
+                    
+                    // Narrower scrollbar indicators
+                    const scrollbarWidth = 6;
+                    
+                    return (
+                        <div 
+                            className="fixed pointer-events-none"
+                            style={{
+                                right: `${window.innerWidth - containerRect.right}px`,
+                                top: `${containerRect.top}px`,
+                                width: `${scrollbarWidth}px`,
+                                height: `${clientHeight}px`,
+                                zIndex: 15, // Below progress bar (z-20)
+                            }}
+                        >
+                            {commentPositions.map((pos, idx) => {
+                                // Position relative to total document height (not viewport)
+                                // This creates static markers on the scrollbar track
+                                const indicatorTopPercent = (pos.top / scrollHeight) * 100;
+                                const indicatorHeightPercent = (pos.height / scrollHeight) * 100;
+                                
+                                return (
+                                    <div
+                                        key={idx}
+                                        className="absolute rounded-sm"
+                                        style={{
+                                            top: `${indicatorTopPercent}%`,
+                                            height: `${Math.max(0.5, indicatorHeightPercent)}%`,
+                                            width: '100%',
+                                            right: '0',
+                                            backgroundColor: 'rgba(250, 204, 21, 0.6)', // Non-transparent yellow
+                                            backdropFilter: 'blur(4px)',
+                                            boxShadow: '0 0 2px rgba(250, 204, 21, 0.5)',
+                                        }}
+                                    />
+                                );
+                            })}
+                        </div>
+                    );
+                })()}
                 {isLoading && (
                     <div className="flex items-center justify-center h-full">
                         <div className="w-6 h-6 border-t-2 rounded-full animate-spin" style={{ borderColor: 'var(--zen-text-muted, #78716c)' }} />
@@ -361,17 +581,20 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
                 </div>
             </main>
 
-            <footer className="flex flex-col shrink-0 px-10 pt-[2px] pb-3 border-t" style={{ borderColor: 'var(--zen-border, rgba(0,0,0,0.06))' }}>
-                <div className="w-full h-0.75 relative overflow-hidden rounded" style={{ backgroundColor: 'var(--zen-progress-bg, #e7e5e4)' }}>
-                    <div
-                        className="h-full absolute left-0 transition-all duration-700 ease-out"
-                        style={{ width: `${progress}%`, backgroundColor: 'var(--zen-progress-fill, #78716c)' }}
-                    />
-                </div>
-                <div className="mt-2 text-center font-serif text-[14px] tracking-[0.3em] uppercase opacity-70" style={{ color: 'var(--zen-text-muted, #a8a29e)' }}>
-                    {progress}%
-                </div>
-            </footer>
+            {/* Footer - hidden in zen mode */}
+            {!zenMode && (
+                <footer className="flex flex-col shrink-0 px-10 pt-[2px] pb-3 border-t relative z-20" style={{ borderColor: 'var(--zen-border, rgba(0,0,0,0.06))' }}>
+                    <div className="w-full h-0.75 relative overflow-hidden rounded" style={{ backgroundColor: 'var(--zen-progress-bg, #e7e5e4)' }}>
+                        <div
+                            className="h-full absolute left-0 transition-all duration-700 ease-out"
+                            style={{ width: `${progress}%`, backgroundColor: 'var(--zen-progress-fill, #78716c)' }}
+                        />
+                    </div>
+                    <div className="mt-2 text-center font-serif text-[14px] tracking-[0.3em] uppercase opacity-70" style={{ color: 'var(--zen-text-muted, #a8a29e)' }}>
+                        {progress}%
+                    </div>
+                </footer>
+            )}
 
             <style jsx global>{`
                 .epub-section p {
