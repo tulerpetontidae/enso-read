@@ -8,6 +8,7 @@ import { IoEye, IoEyeOff } from 'react-icons/io5';
 import { FONT_OPTIONS, WIDTH_OPTIONS, FONT_SIZE_OPTIONS, THEME_OPTIONS, applyTheme } from '@/components/SettingsModal';
 import { checkGoogleTranslateAvailable } from '@/lib/browser';
 import type { TranslationEngine } from '@/lib/translation';
+import { SUPPORTED_LANGUAGES } from '@/lib/languages';
 
 export default function SettingsPage() {
     const [apiKey, setApiKey] = useState('');
@@ -17,6 +18,7 @@ export default function SettingsPage() {
     const [selectedFontSize, setSelectedFontSize] = useState('medium');
     const [selectedTheme, setSelectedTheme] = useState('light');
     const [selectedEngine, setSelectedEngine] = useState<TranslationEngine>('openai');
+    const [targetLanguage, setTargetLanguage] = useState<string>('en');
     const [googleAvailable, setGoogleAvailable] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [saveMessage, setSaveMessage] = useState<string | null>(null);
@@ -30,19 +32,21 @@ export default function SettingsPage() {
     useEffect(() => {
         const loadSettings = async () => {
             try {
-                const [apiKeySetting, fontSetting, widthSetting, fontSizeSetting, themeSetting, engineSetting] = await Promise.all([
+                const [apiKeySetting, fontSetting, widthSetting, fontSizeSetting, themeSetting, engineSetting, targetLangSetting] = await Promise.all([
                     db.settings.get('openai_api_key'),
                     db.settings.get('reader_font'),
                     db.settings.get('reader_width'),
                     db.settings.get('reader_font_size'),
                     db.settings.get('theme'),
                     db.settings.get('translation_engine'),
+                    db.settings.get('target_language'),
                 ]);
                 if (apiKeySetting?.value) setApiKey(apiKeySetting.value);
                 if (fontSetting?.value) setSelectedFont(fontSetting.value);
                 if (widthSetting?.value) setSelectedWidth(widthSetting.value);
                 if (fontSizeSetting?.value) setSelectedFontSize(fontSizeSetting.value);
                 if (themeSetting?.value) setSelectedTheme(themeSetting.value);
+                if (targetLangSetting?.value) setTargetLanguage(targetLangSetting.value);
                 
                 // Determine engine: use saved, or auto-select based on availability
                 if (engineSetting?.value === 'google' || engineSetting?.value === 'openai') {
@@ -80,6 +84,7 @@ export default function SettingsPage() {
                 db.settings.put({ key: 'reader_font_size', value: selectedFontSize }),
                 db.settings.put({ key: 'theme', value: selectedTheme }),
                 db.settings.put({ key: 'translation_engine', value: selectedEngine }),
+                db.settings.put({ key: 'target_language', value: targetLanguage }),
             ]);
             applyTheme(selectedTheme);
             setSaveMessage('Settings saved successfully!');
@@ -285,6 +290,29 @@ export default function SettingsPage() {
                                     <span className="text-xs" style={{ color: 'var(--zen-text-muted)' }}>gpt-5.2</span>
                                 </button>
                             </div>
+                        </div>
+
+                        {/* Target Language Selection */}
+                        <div className="space-y-2">
+                            <label className="block text-sm font-medium" style={{ color: 'var(--zen-text, #1c1917)' }}>Target Language</label>
+                            <select
+                                value={targetLanguage}
+                                onChange={(e) => setTargetLanguage(e.target.value)}
+                                className="w-full px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-200 focus:border-rose-300 transition-all"
+                                style={{
+                                    backgroundColor: 'var(--zen-btn-bg)',
+                                    borderWidth: '1px',
+                                    borderStyle: 'solid',
+                                    borderColor: 'var(--zen-btn-border)',
+                                    color: 'var(--zen-text)',
+                                }}
+                            >
+                                {SUPPORTED_LANGUAGES.map((lang) => (
+                                    <option key={lang.code} value={lang.code}>
+                                        {lang.nativeName} ({lang.englishName})
+                                    </option>
+                                ))}
+                            </select>
                         </div>
 
                         {/* OpenAI API Key */}

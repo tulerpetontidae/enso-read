@@ -28,7 +28,11 @@ export interface TranslationResult {
 /**
  * Translate text using Google Translate (Chrome Translator API)
  */
-export async function translateWithGoogle(text: string): Promise<string | null> {
+export async function translateWithGoogle(
+  text: string,
+  sourceLanguage: string = 'ja',
+  targetLanguage: string = 'en'
+): Promise<string | null> {
   if (typeof self === 'undefined') {
     return null;
   }
@@ -51,8 +55,8 @@ export async function translateWithGoogle(text: string): Promise<string | null> 
     }
 
     const availability = await Translator.availability({
-      sourceLanguage: 'ja',
-      targetLanguage: 'en',
+      sourceLanguage,
+      targetLanguage,
     });
 
     if (availability === 'unavailable') {
@@ -66,8 +70,8 @@ export async function translateWithGoogle(text: string): Promise<string | null> 
     }
 
     const translator = await Translator.create({
-      sourceLanguage: 'ja',
-      targetLanguage: 'en',
+      sourceLanguage,
+      targetLanguage,
     });
 
     // Translate the text using the instance
@@ -83,7 +87,12 @@ export async function translateWithGoogle(text: string): Promise<string | null> 
 /**
  * Translate text using OpenAI API
  */
-export async function translateWithOpenAI(text: string, apiKey: string): Promise<string> {
+export async function translateWithOpenAI(
+  text: string,
+  apiKey: string,
+  sourceLanguage: string = 'ja',
+  targetLanguage: string = 'en'
+): Promise<string> {
   const response = await fetch('/api/translate', {
     method: 'POST',
     headers: {
@@ -93,6 +102,8 @@ export async function translateWithOpenAI(text: string, apiKey: string): Promise
       text,
       apiKey,
       engine: 'openai',
+      sourceLanguage,
+      targetLanguage,
     }),
   });
 
@@ -111,15 +122,17 @@ export async function translateWithOpenAI(text: string, apiKey: string): Promise
 export async function translate(
   text: string,
   engine: TranslationEngine,
-  apiKey?: string
+  apiKey?: string,
+  sourceLanguage: string = 'ja',
+  targetLanguage: string = 'en'
 ): Promise<string | null> {
   if (engine === 'google') {
-    return await translateWithGoogle(text);
+    return await translateWithGoogle(text, sourceLanguage, targetLanguage);
   } else if (engine === 'openai') {
     if (!apiKey) {
       throw new Error('OpenAI API key is required');
     }
-    return await translateWithOpenAI(text, apiKey);
+    return await translateWithOpenAI(text, apiKey, sourceLanguage, targetLanguage);
   }
   throw new Error(`Unknown translation engine: ${engine}`);
 }

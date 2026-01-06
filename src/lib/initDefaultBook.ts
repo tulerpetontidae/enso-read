@@ -73,6 +73,7 @@ export async function initializeDefaultBook(): Promise<void> {
       data: arrayBuffer,
       addedAt: Date.now(),
       coverImage,
+      sourceLanguage: 'ja', // Japanese
     });
 
     // Find first proper paragraph and add translation/notes
@@ -84,26 +85,19 @@ export async function initializeDefaultBook(): Promise<void> {
       let firstParagraph: string | null = null;
 
       // Search through sections to find first proper paragraph
-      // Use the same approach as the reader page
       // @ts-ignore
-      for (let i = 0; i < book.spine.length; i++) {
-        // @ts-ignore
-        const section = book.spine.get(i);
-        if (!section) continue;
-        
+      const maxSections = Math.min(10, book.spine.length);
+      
+      for (let i = 0; i < maxSections; i++) {
         try {
+          // @ts-ignore
+          const section = book.spine.get(i);
+          if (!section) continue;
+          
           await section.load(book.load.bind(book));
           const content = section.document;
           
           if (content) {
-            // Remove stylesheets to prevent errors (similar to reader page)
-            try {
-              content.querySelectorAll('link[rel="stylesheet"]').forEach(el => el.remove());
-              content.querySelectorAll('style').forEach(el => el.remove());
-            } catch (e) {
-              // Ignore errors when removing styles
-            }
-            
             // Get all paragraphs from the document
             const paragraphs = content.querySelectorAll('p');
             for (const p of paragraphs) {
@@ -115,13 +109,11 @@ export async function initializeDefaultBook(): Promise<void> {
               }
             }
           }
+          section.unload();
           
           if (firstParagraph) break;
-        } catch (e: any) {
-          // Ignore replaceCss and other epub.js internal errors - just continue to next section
-          if (!e?.message?.includes('replaceCss')) {
-            console.warn('Error loading section:', e);
-          }
+        } catch (e) {
+          // Suppress replaceCss errors - they don't break text extraction
           continue;
         }
       }

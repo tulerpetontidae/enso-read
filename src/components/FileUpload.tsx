@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useCallback, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { db } from '@/lib/db';
 import { v4 as uuidv4 } from 'uuid';
 import clsx from 'clsx';
 import { FaBookOpen, FaCloudUploadAlt } from 'react-icons/fa';
 import ePub from 'epubjs';
+import { detectLanguage } from '@/lib/languages';
 
 // Extract cover image from EPUB (best effort, fails gracefully)
 async function extractCoverImage(arrayBuffer: ArrayBuffer): Promise<string | undefined> {
@@ -42,8 +42,122 @@ async function extractCoverImage(arrayBuffer: ArrayBuffer): Promise<string | und
     return undefined;
 }
 
+// Detect language by script analysis (more reliable for Asian languages)
+function detectLanguageByScript(text: string): string | undefined {
+    if (!text || text.length < 20) return undefined;
+    
+    // Count characters by script
+    let japanese = 0; // Hiragana + Katakana
+    let chinese = 0;  // CJK ideographs (shared by Japanese/Chinese)
+    let cyrillic = 0;
+    let latin = 0;
+    
+    for (const char of text) {
+        const code = char.charCodeAt(0);
+        // Hiragana
+        if (code >= 0x3040 && code <= 0x309F) japanese++;
+        // Katakana
+        else if (code >= 0x30A0 && code <= 0x30FF) japanese++;
+        // CJK Unified Ideographs
+        else if (code >= 0x4E00 && code <= 0x9FAF) chinese++;
+        // Cyrillic
+        else if (code >= 0x0400 && code <= 0x04FF) cyrillic++;
+        // Latin
+        else if ((code >= 0x0041 && code <= 0x007A) || (code >= 0x00C0 && code <= 0x024F)) latin++;
+    }
+    
+    const total = japanese + chinese + cyrillic + latin;
+    if (total < 20) return undefined;
+    
+    // Japanese: has hiragana/katakana (unique to Japanese)
+    if (japanese > 5) return 'ja';
+    
+    // Chinese: has CJK but no hiragana/katakana
+    if (chinese > total * 0.3 && japanese === 0) return 'zh';
+    
+    // Russian: predominantly Cyrillic
+    if (cyrillic > total * 0.5) return 'ru';
+    
+    // For Latin-based languages, use franc
+    return undefined;
+}
+
+// Detect language from EPUB content
+async function detectBookLanguage(arrayBuffer: ArrayBuffer): Promise<string | undefined> {
+    try {
+        // @ts-ignore
+        const book = ePub(arrayBuffer);
+        await book.ready;
+        
+        let sampleText = '';
+        
+        // @ts-ignore
+        const maxSections = Math.min(5, book.spine.length);
+        
+        for (let i = 0; i < maxSections && sampleText.length < 2000; i++) {
+            try {
+                // @ts-ignore
+                const section = book.spine.get(i);
+                if (!section) continue;
+                
+                await section.load(book.load.bind(book));
+                const content = section.document;
+                
+                if (content) {
+                    // Extract text from paragraphs
+                    const paragraphs = content.querySelectorAll('p');
+                    for (const p of paragraphs) {
+                        const text = p.textContent?.trim() || '';
+                        if (text.length > 10) {
+                            sampleText += text + ' ';
+                            if (sampleText.length >= 2000) break;
+                        }
+                    }
+                    
+                    // Also try body directly if no paragraphs found
+                    if (sampleText.length < 100) {
+                        const body = content.querySelector('body');
+                        if (body) {
+                            const bodyText = body.textContent?.trim() || '';
+                            if (bodyText.length > 10) {
+                                sampleText += bodyText.substring(0, 2000);
+                            }
+                        }
+                    }
+                }
+                section.unload();
+            } catch (e) {
+                // Suppress replaceCss errors - they don't break text extraction
+                continue;
+            }
+        }
+        
+        book.destroy();
+        
+        console.log('Language detection sample size:', sampleText.length);
+        
+        if (sampleText.length >= 30) {
+            // First try script-based detection (reliable for CJK and Cyrillic)
+            const scriptDetected = detectLanguageByScript(sampleText);
+            if (scriptDetected) {
+                console.log('Detected language by script:', scriptDetected);
+                return scriptDetected;
+            }
+            
+            // Fall back to franc for Latin-based languages
+            const francDetected = detectLanguage(sampleText);
+            if (francDetected && francDetected !== 'unknown') {
+                console.log('Detected language by franc:', francDetected);
+                return francDetected;
+            }
+        }
+    } catch (e) {
+        console.warn('Language detection skipped:', e);
+    }
+    return undefined;
+}
+
 export default function FileUpload() {
-    const router = useRouter();
     const [isDragging, setIsDragging] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
 
@@ -78,15 +192,34 @@ export default function FileUpload() {
                 // Cover extraction failed, continue without it
             }
 
+            // Detect language (non-blocking, fails gracefully)
+            let sourceLanguage: string | undefined;
+            try {
+                // Create a copy for language detection so original buffer stays intact
+                const bufferCopy = arrayBuffer.slice(0);
+                const detected = await detectBookLanguage(bufferCopy);
+                if (detected && detected !== 'unknown') {
+                    sourceLanguage = detected;
+                    console.log('Detected language:', detected);
+                } else {
+                    console.log('Language detection returned unknown or failed');
+                }
+            } catch (error) {
+                // Language detection failed, continue without it
+                console.warn('Language detection error:', error);
+            }
+
             await db.books.add({
                 id,
                 title: file.name.replace('.epub', ''),
                 data: arrayBuffer,
                 addedAt: Date.now(),
                 coverImage,
+                sourceLanguage,
             });
 
-            router.push(`/reader/${id}`);
+            // Stay on landing page - don't auto-navigate to reader
+            setIsProcessing(false);
         } catch (error) {
             console.error('Error saving book:', error);
             alert('Failed to save book to library.');

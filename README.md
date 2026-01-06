@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="src/app/landing_zen.svg" width="80" alt="ZenRead JP">
+  <img src="src/app/landing_zen.svg" width="80" alt="ZenRead">
 </p>
 
-<h1 align="center">ZenRead JP</h1>
+<h1 align="center">ZenRead</h1>
 
 <p align="center">
-  A minimalist Japanese EPUB reader for immersive learning.
+  A minimalist multi-language EPUB reader for immersive learning.
 </p>
 
 <p align="center">
@@ -16,20 +16,23 @@
 
 ## Philosophy
 
-Reading is one of the best ways to improve language comprehension — yet it can be hard to stay focused when every sentence feels like a puzzle. This minimalist tool streamlines Japanese book reading with quick comprehension assistance when needed, so you don't lose the narrative thread and stay engaged with the text.
+Originally built for Japanese, ZenRead now supports reading in multiple languages. The core idea remains the same: reading is one of the best ways to improve language comprehension — yet it can be hard to stay focused when every sentence feels like a puzzle.
+
+This minimalist tool enables **parallel reading, paragraph by paragraph** — see your target language text alongside instant translations when needed, without losing the narrative flow.
 
 Follow these principles to get the most out of it:
 
 ***Translate to verify, not to cheat.*** Read a paragraph, form your understanding, then check the translation to confirm you got it right. This active process builds real comprehension.
 
-***Leave notes for your future self.*** Mark tricky grammar, save useful vocabulary, or jot down questions for your next langauge lesson. Your annotations stay with the text, ready when you return.
+***Leave notes for your future self.*** Mark tricky grammar, save useful vocabulary, or jot down questions for your next language lesson. Your annotations stay with the text, ready when you return.
 
 
 
 ## Features
 
+- **Multi-Language Support** — Supports reading in Japanese, Russian, English, German, Spanish, French, and Chinese. Books are automatically detected or can be manually set. 
 - **Clean Reading** — Distraction-free interface with customizable fonts, sizes, and themes
-- **Paragraph Translation** — On-demand translation to verify your understanding. Chrome users can use Google Translate for free (no API key required). Much better translation quality with OpenAI (gpt-5.2) is also available with an [API key](https://platform.openai.com/api-keys).  
+- **Paragraph Translation** — On-demand translation to verify your understanding. Choose your target language (default: English). Chrome users can use Google Translate for free (no API key required). Much better translation quality with OpenAI (gpt-5.2) is also available with an [API key](https://platform.openai.com/api-keys).  
 - **Personal Notes** — Annotate any paragraph; notes persist locally
 - **Progress Memory** — Automatically saves your position in each book
 - **Offline Storage** — Everything stored in your browser

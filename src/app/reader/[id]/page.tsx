@@ -223,10 +223,13 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
                         }
                         section.unload();
                     } catch (err) {
-                        console.error(`Section ${i} load error:`, err);
+                        // Suppress replaceCss and other internal epub.js errors
+                        // These don't actually break functionality
+                        if (!(err instanceof Error && err.message?.includes('replaceCss'))) {
+                            console.error(`Section ${i} load error:`, err);
+                        }
                     }
                 }
-
                 setSections(loadedSections);
                 setIsLoading(false);
 

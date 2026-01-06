@@ -6,6 +6,7 @@ interface Book {
   data: ArrayBuffer;
   addedAt: number;
   coverImage?: string; // Base64 data URL of cover image
+  sourceLanguage?: string; // ISO 639-1 code (e.g., 'ja', 'en', 'ru')
 }
 
 interface WebConfig {
@@ -77,6 +78,18 @@ db.version(4).stores({
   dictionary: '++id, kanji, reading, *tags',
   translations: 'id, bookId, paragraphHash, createdAt',
   notes: 'id, bookId, paragraphHash, updatedAt'
+});
+
+db.version(5).stores({
+  books: 'id, title, addedAt',
+  progress: 'bookId, updatedAt',
+  settings: 'key',
+  dictionary: '++id, kanji, reading, *tags',
+  translations: 'id, bookId, paragraphHash, createdAt',
+  notes: 'id, bookId, paragraphHash, updatedAt'
+}).upgrade(async (tx) => {
+  // Migration: add sourceLanguage field to existing books (will be undefined, can be set later)
+  // No data migration needed as it's an optional field
 });
 
 export type { Book, Progress, WebConfig, DictionaryEntry, Translation, Note };

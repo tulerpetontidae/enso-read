@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
     try {
-        const { text, apiKey, engine } = await request.json();
+        const { text, apiKey, engine, sourceLanguage = 'ja', targetLanguage = 'en' } = await request.json();
 
         if (!text || typeof text !== 'string') {
             return NextResponse.json(
@@ -27,6 +27,19 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        // Language names for prompt (fallback to codes if not found)
+        const languageNames: Record<string, string> = {
+            'ja': 'Japanese',
+            'ru': 'Russian',
+            'en': 'English',
+            'de': 'German',
+            'es': 'Spanish',
+            'fr': 'French',
+            'zh': 'Chinese',
+        };
+        const sourceLangName = languageNames[sourceLanguage] || sourceLanguage;
+        const targetLangName = languageNames[targetLanguage] || targetLanguage;
+
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -38,7 +51,7 @@ export async function POST(request: NextRequest) {
                 messages: [
                     {
                         role: 'system',
-                        content: 'You are a professional Japanese to English translator. Translate the following Japanese text to natural, fluent English. Return only the translation without any explanations or additional text.'
+                        content: `You are a professional translator. Translate the following ${sourceLangName} text to natural, fluent ${targetLangName}. Return only the translation without any explanations or additional text.`
                     },
                     {
                         role: 'user',

@@ -133,14 +133,18 @@ export default function TranslatableParagraph({
         setError(null);
 
         try {
-            // Get translation engine and API key from settings
-            const [engineSetting, apiKeySetting] = await Promise.all([
+            // Get translation engine, API key, target language, and book source language
+            const [engineSetting, apiKeySetting, targetLangSetting, book] = await Promise.all([
                 db.settings.get('translation_engine'),
                 db.settings.get('openai_api_key'),
+                db.settings.get('target_language'),
+                db.books.get(bookId),
             ]);
 
             let selectedEngine: TranslationEngine = 'openai';
             let apiKey: string | undefined = apiKeySetting?.value;
+            const targetLanguage = targetLangSetting?.value || 'en';
+            const sourceLanguage = book?.sourceLanguage || 'ja'; // Default to Japanese for backward compatibility
 
             // Determine which engine to use
             if (engineSetting?.value === 'google') {
@@ -177,8 +181,8 @@ export default function TranslatableParagraph({
                 }
             }
 
-            // Translate using selected engine
-            const translatedText = await translate(paragraphText, selectedEngine, apiKey);
+            // Translate using selected engine with language parameters
+            const translatedText = await translate(paragraphText, selectedEngine, apiKey, sourceLanguage, targetLanguage);
 
             if (!translatedText) {
                 throw new Error('Translation failed - no result received');

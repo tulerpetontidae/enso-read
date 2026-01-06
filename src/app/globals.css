@@ -235,3 +235,30 @@ body {
   --zen-recommend-text: #a8a29e;
   --zen-recommend-heading: #d4d4d4;
 }
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes blink {
+  0%, 50% {
+    opacity: 1;
+  }
+  51%, 100% {
+    opacity: 0;
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-in-out;
+}
+
+.animate-blink {
+  animation: blink 1s infinite;
+}

@@ -5,12 +5,14 @@ import FileUpload from "@/components/FileUpload";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FaBook } from "react-icons/fa";
 import { RiDeleteBinLine, RiPencilLine } from "react-icons/ri";
 import { IoSettingsOutline } from "react-icons/io5";
 import { FaGithub } from "react-icons/fa";
 import ePub from "epubjs";
 import { initializeDefaultBook } from "@/lib/initDefaultBook";
+import { SUPPORTED_LANGUAGES, getLanguageName, getLanguageCode, getLongestLanguageName, LANGUAGE_MAP } from "@/lib/languages";
 
 // Extract cover image from EPUB (best effort)
 async function extractCoverImage(arrayBuffer: ArrayBuffer): Promise<string | undefined> {
@@ -45,6 +47,7 @@ async function extractCoverImage(arrayBuffer: ArrayBuffer): Promise<string | und
 }
 
 export default function Home() {
+  const router = useRouter();
   const books = useLiveQuery(() => db.books.toArray());
   const allProgress = useLiveQuery(() => db.progress.toArray());
   
@@ -61,6 +64,99 @@ export default function Home() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [updatingCovers, setUpdatingCovers] = useState(false);
+  const [currentLanguageIndex, setCurrentLanguageIndex] = useState(0);
+  const [titleTypingText, setTitleTypingText] = useState("JA");
+  const [masterTypingText, setMasterTypingText] = useState("日本語");
+  const [editingLanguageId, setEditingLanguageId] = useState<string | null>(null);
+  const [editLanguage, setEditLanguage] = useState("");
+
+  // Find longest language name for fixed width
+  const longestLanguageName = getLongestLanguageName();
+  const longestLanguageCode = "ZH"; // All codes are 2 chars, but ZH is widest visually
+
+  // Language cycling animation with typing effect
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentLanguageIndex((prev) => (prev + 1) % SUPPORTED_LANGUAGES.length);
+    }, 8000); // Change every 8 seconds (slower, more time to see)
+    return () => clearInterval(interval);
+  }, []);
+
+  // Typing animation for title (ZenRead [CODE]) with backspace effect
+  useEffect(() => {
+    const prevIndex = currentLanguageIndex === 0 ? SUPPORTED_LANGUAGES.length - 1 : currentLanguageIndex - 1;
+    const prevLang = SUPPORTED_LANGUAGES[prevIndex];
+    const currentLang = SUPPORTED_LANGUAGES[currentLanguageIndex];
+    const previousText = getLanguageCode(prevLang.code);
+    const targetText = getLanguageCode(currentLang.code);
+    
+    // First, delete previous text (backspace effect)
+    let deleteIndex = previousText.length;
+    const deleteInterval = setInterval(() => {
+      if (deleteIndex > 0) {
+        setTitleTypingText(previousText.substring(0, deleteIndex - 1));
+        deleteIndex--;
+      } else {
+        clearInterval(deleteInterval);
+        
+        // Small pause before typing
+        setTimeout(() => {
+          // Then type new text
+          let currentIndex = 0;
+          const typingInterval = setInterval(() => {
+            if (currentIndex < targetText.length) {
+              setTitleTypingText(targetText.substring(0, currentIndex + 1));
+              currentIndex++;
+            } else {
+              clearInterval(typingInterval);
+            }
+          }, 300); // 300ms per character (slower typing)
+        }, 200); // 200ms pause
+      }
+    }, 100); // 100ms per character deletion
+    
+    return () => {
+      clearInterval(deleteInterval);
+    };
+  }, [currentLanguageIndex]);
+
+  // Typing animation for "Master [language]" - only the language name types with backspace
+  useEffect(() => {
+    const prevIndex = currentLanguageIndex === 0 ? SUPPORTED_LANGUAGES.length - 1 : currentLanguageIndex - 1;
+    const prevLang = SUPPORTED_LANGUAGES[prevIndex];
+    const currentLang = SUPPORTED_LANGUAGES[currentLanguageIndex];
+    const previousText = prevLang.nativeName;
+    const targetLanguageName = currentLang.nativeName;
+    
+    // First, delete previous text (backspace effect)
+    let deleteIndex = previousText.length;
+    const deleteInterval = setInterval(() => {
+      if (deleteIndex > 0) {
+        setMasterTypingText(previousText.substring(0, deleteIndex - 1));
+        deleteIndex--;
+      } else {
+        clearInterval(deleteInterval);
+        
+        // Small pause before typing
+        setTimeout(() => {
+          // Then type new text
+          let currentIndex = 0;
+          const typingInterval = setInterval(() => {
+            if (currentIndex < targetLanguageName.length) {
+              setMasterTypingText(targetLanguageName.substring(0, currentIndex + 1));
+              currentIndex++;
+            } else {
+              clearInterval(typingInterval);
+            }
+          }, 150); // 150ms per character (slower typing)
+        }, 200); // 200ms pause
+      }
+    }, 80); // 80ms per character deletion
+    
+    return () => {
+      clearInterval(deleteInterval);
+    };
+  }, [currentLanguageIndex]);
 
   // Initialize default book on first load
   useEffect(() => {
@@ -117,6 +213,30 @@ export default function Home() {
     setEditingId(null);
   };
 
+  const startEditingLanguage = (e: React.MouseEvent, id: string, currentLanguage: string | undefined) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setEditingLanguageId(id);
+    setEditLanguage(currentLanguage || 'ja');
+  };
+
+  const saveLanguage = async (e: React.FormEvent | React.FocusEvent, id: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (editLanguage) {
+      await db.books.update(id, { sourceLanguage: editLanguage });
+    }
+    setEditingLanguageId(null);
+  };
+
+  const handleLanguageKeyDown = (e: React.KeyboardEvent, id: string) => {
+    if (e.key === 'Enter') {
+      saveLanguage(e, id);
+    } else if (e.key === 'Escape') {
+      setEditingLanguageId(null);
+    }
+  };
+
   const handleTitleKeyDown = (e: React.KeyboardEvent, id: string) => {
     if (e.key === 'Enter') {
       saveTitle(e, id);
@@ -156,10 +276,40 @@ export default function Home() {
             <img src="/landing_zen.svg" alt="ZenRead" className="w-32 h-32" style={{ filter: 'var(--zen-logo-filter, none)' }} />
           </div>
           <h1 className="text-6xl md:text-8xl font-serif font-thin tracking-tighter" style={{ color: 'var(--zen-heading, #1c1917)' }}>
-            ZenRead <span className="text-rose-400">JP</span>
+            <span className="inline-block">ZenRead</span>{' '}
+            <span 
+              className="text-rose-400 inline-block"
+              style={{ 
+                width: '2.5ch', // Fixed width for 2-char codes
+                display: 'inline-block',
+                textAlign: 'left',
+                fontSize: 'inherit',
+                fontFamily: 'inherit',
+                letterSpacing: 'inherit',
+              }}
+            >
+              {titleTypingText || '\u00A0'}
+              {titleTypingText && titleTypingText.length < longestLanguageCode.length && (
+                <span className="animate-blink">|</span>
+              )}
+            </span>
           </h1>
-          <p className="text-xl md:text-2xl font-light max-w-lg mx-auto leading-relaxed tracking-wide" style={{ color: 'var(--zen-text-muted, #78716c)' }}>
-            Master Japanese through <span className="font-normal" style={{ color: 'var(--zen-text, #1c1917)' }}>reading immersion</span>.
+          <p 
+            className="text-lg md:text-xl font-light max-w-lg mx-auto leading-relaxed tracking-wide mt-4"
+            style={{ 
+              minHeight: '1.5em',
+            }}
+          >
+            <span style={{ color: 'var(--zen-text-muted, #78716c)' }}>Master </span>
+            <span style={{ color: 'var(--zen-text-muted, #78716c)' }}>
+              {masterTypingText || '\u00A0'}
+              {masterTypingText && masterTypingText.length < SUPPORTED_LANGUAGES[currentLanguageIndex].nativeName.length && (
+                <span className="animate-blink">|</span>
+              )}
+            </span>
+            {' '}
+            <span style={{ color: 'var(--zen-text-muted, #78716c)' }}>through </span>
+            <span className="font-normal" style={{ color: 'var(--zen-text, #1c1917)' }}>reading immersion</span>.
           </p>
         </header>
 
@@ -180,18 +330,42 @@ export default function Home() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {books?.map((book) => (
-                <Link
-                  href={`/reader/${book.id}`}
+                <div
                   key={book.id}
-                  className="group relative flex flex-col aspect-[3/4] p-8 backdrop-blur-sm rounded-3xl shadow-lg hover:shadow-2xl transition-all duration-500 hover:-translate-y-2 overflow-hidden"
+                  className="group relative flex flex-col aspect-[3/4] p-8 backdrop-blur-sm rounded-3xl shadow-lg hover:shadow-2xl transition-all duration-500 hover:-translate-y-2 overflow-hidden cursor-pointer"
                   style={{ 
                     backgroundColor: 'var(--zen-card-bg, rgba(255,255,255,0.4))',
                     borderColor: 'var(--zen-border, rgba(255,255,255,0.4))',
                     borderWidth: '1px',
-                    borderStyle: 'solid'
+                    borderStyle: 'solid',
+                  }}
+                  onClick={(e) => {
+                    // Don't navigate if clicking on interactive elements
+                    const target = e.target as HTMLElement;
+                    if (
+                      editingId === book.id ||
+                      editingLanguageId === book.id ||
+                      target.closest('.language-badge-container') ||
+                      target.closest('.action-buttons-container') ||
+                      target.closest('input') ||
+                      target.closest('select') ||
+                      target.closest('button') ||
+                      target.tagName === 'SELECT' ||
+                      target.tagName === 'OPTION'
+                    ) {
+                      // Don't navigate - let the interactive element handle it
+                      return;
+                    }
+                    // Navigate to the reader
+                    router.push(`/reader/${book.id}`);
                   }}
                 >
-                  <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" style={{ background: 'var(--zen-card-hover-gradient, linear-gradient(to top, rgba(255,255,255,0.9), transparent))' }} />
+                  <div 
+                    className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" 
+                    style={{ 
+                      background: 'var(--zen-card-hover-gradient, linear-gradient(to top, rgba(255,255,255,0.9), transparent))'
+                    }} 
+                  />
 
                   {/* Progress Indicator - gradient from bottom to top */}
                   {progressMap[book.id] > 0 && (
@@ -220,6 +394,66 @@ export default function Home() {
                     </div>
                   )}
 
+                  {/* Language Badge - Editable (Top Left) */}
+                  <div 
+                    className="language-badge-container absolute top-4 left-4 z-20"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (editingLanguageId !== book.id) {
+                        startEditingLanguage(e, book.id, book.sourceLanguage);
+                      }
+                    }}
+                    title="Click to change language"
+                  >
+                    {editingLanguageId === book.id ? (
+                      <select
+                        value={editLanguage}
+                        onChange={(e) => {
+                          const newLang = e.target.value;
+                          setEditLanguage(newLang);
+                          // Save immediately on change
+                          db.books.update(book.id, { sourceLanguage: newLang || undefined }).then(() => {
+                            setEditingLanguageId(null);
+                          });
+                        }}
+                        onBlur={(e) => {
+                          saveLanguage(e, book.id);
+                        }}
+                        onKeyDown={(e) => handleLanguageKeyDown(e, book.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        autoFocus
+                        className="px-2 py-1 rounded-md text-xs font-light backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-rose-300"
+                        style={{ 
+                          backgroundColor: 'var(--zen-card-solid-bg, rgba(255,255,255,0.9))',
+                          color: 'var(--zen-text)',
+                          border: '1px solid var(--zen-border, rgba(0,0,0,0.1))',
+                        }}
+                      >
+                        {SUPPORTED_LANGUAGES.map((lang) => (
+                          <option key={lang.code} value={lang.code}>
+                            {lang.nativeName} ({lang.code.toUpperCase()})
+                          </option>
+                        ))}
+                        <option value="">Unknown</option>
+                      </select>
+                    ) : (
+                      <div 
+                        className="px-2 py-1 rounded-md text-xs font-light backdrop-blur-sm cursor-pointer hover:bg-opacity-90 transition-all"
+                        style={{ 
+                          backgroundColor: book.sourceLanguage 
+                            ? 'var(--zen-card-solid-bg, rgba(255,255,255,0.8))' 
+                            : 'var(--zen-card-solid-bg, rgba(255,255,255,0.6))',
+                          color: 'var(--zen-text-muted)',
+                          border: '1px solid var(--zen-border, rgba(0,0,0,0.1))'
+                        }}
+                      >
+                        {book.sourceLanguage 
+                          ? `${getLanguageName(book.sourceLanguage)} ${getLanguageCode(book.sourceLanguage)}`
+                          : 'Language?'}
+                      </div>
+                    )}
+                  </div>
+
                   {/* Book Cover */}
                   <div className="flex-1 flex items-center justify-center mb-4">
                     {book.coverImage ? (
@@ -245,7 +479,7 @@ export default function Home() {
                         onChange={(e) => setEditTitle(e.target.value)}
                         onBlur={(e) => saveTitle(e, book.id)}
                         onKeyDown={(e) => handleTitleKeyDown(e, book.id)}
-                        onClick={(e) => e.preventDefault()}
+                        onClick={(e) => e.stopPropagation()}
                         autoFocus
                         className="w-full font-serif font-medium text-lg text-center rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-rose-300"
                         style={{ backgroundColor: 'var(--zen-input-bg, white)', borderColor: 'var(--zen-border, #e7e5e4)', color: 'var(--zen-text, #1c1917)' }}
@@ -261,9 +495,12 @@ export default function Home() {
                   </div>
 
                   {/* Action buttons */}
-                  <div className="absolute top-4 right-4 flex gap-1 opacity-0 group-hover:opacity-100 translate-x-4 group-hover:translate-x-0 transition-all">
+                  <div className="action-buttons-container absolute top-4 right-4 flex gap-1 opacity-0 group-hover:opacity-100 translate-x-4 group-hover:translate-x-0 transition-all z-20">
                     <button
-                      onClick={(e) => startEditing(e, book.id, book.title)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        startEditing(e, book.id, book.title);
+                      }}
                       className="p-2 hover:text-amber-500 rounded-full transition-all"
                       style={{ color: 'var(--zen-text-muted, #d6d3d1)' }}
                       title="Rename book"
@@ -271,7 +508,10 @@ export default function Home() {
                       <RiPencilLine size={16} />
                     </button>
                     <button
-                      onClick={(e) => deleteBook(e, book.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteBook(e, book.id);
+                      }}
                       className="p-2 hover:text-rose-500 rounded-full transition-all"
                       style={{ color: 'var(--zen-text-muted, #d6d3d1)' }}
                       title="Delete book"
@@ -279,7 +519,7 @@ export default function Home() {
                       <RiDeleteBinLine size={16} />
                     </button>
                   </div>
-                </Link>
+                </div>
               ))}
             </div>
           </section>

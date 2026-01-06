@@ -16,6 +16,7 @@
     "dexie": "^4.2.1",
     "dexie-react-hooks": "^4.2.0",
     "epubjs": "^0.3.93",
+    "franc": "^6.2.0",
     "html-react-parser": "^5.2.11",
     "next": "16.1.1",
     "react": "19.2.3",
