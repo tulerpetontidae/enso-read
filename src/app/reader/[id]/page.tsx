@@ -72,6 +72,7 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
     const [showCommentIndicators, setShowCommentIndicators] = useState(false); // Toggle: ON = show on scroll, OFF = never show
     const [indicatorsVisible, setIndicatorsVisible] = useState(false); // Actual visibility state (for auto-hide)
     const [zenMode, setZenMode] = useState(false);
+    const [notesVersion, setNotesVersion] = useState(0);
 
     // Load reader settings
     const loadReaderSettings = useCallback(async () => {
@@ -126,6 +127,7 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
                                 showAllTranslations={showAllTranslations}
                                 showAllComments={showAllComments}
                                 zenMode={zenMode}
+                                onNoteChange={() => setNotesVersion(prev => prev + 1)}
                             >
                                 <p>{children}</p>
                             </TranslatableParagraph>
@@ -399,7 +401,7 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
         const timeout = setTimeout(updateCommentPositions, 1000);
         
         return () => clearTimeout(timeout);
-    }, [sections, id]);
+    }, [sections, id, notesVersion]);
 
     return (
         <div className="fixed inset-0 flex flex-col" style={{ backgroundColor: 'var(--zen-reader-bg, #FDFBF7)' }}>

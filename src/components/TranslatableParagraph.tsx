@@ -24,6 +24,7 @@ interface TranslatableParagraphProps {
     showAllTranslations?: boolean;
     showAllComments?: boolean;
     zenMode?: boolean;
+    onNoteChange?: () => void;
 }
 
 export default function TranslatableParagraph({ 
@@ -32,7 +33,8 @@ export default function TranslatableParagraph({
     paragraphText,
     showAllTranslations = false,
     showAllComments = false,
-    zenMode = false
+    zenMode = false,
+    onNoteChange
 }: TranslatableParagraphProps) {
     // Hover state
     const [isHovered, setIsHovered] = useState(false);
@@ -294,6 +296,7 @@ export default function TranslatableParagraph({
                 await db.notes.delete(noteId);
             }
             setSavedNoteContent(noteContent);
+            if (onNoteChange) onNoteChange();
         } catch (e) {
             console.error('Failed to save note:', e);
         } finally {
