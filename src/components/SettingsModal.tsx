@@ -13,9 +13,13 @@ export const FONT_OPTIONS = [
 ];
 
 export const WIDTH_OPTIONS = [
-    { value: 'narrow', label: 'Narrow', maxWidth: '600px' },
-    { value: 'medium', label: 'Medium', maxWidth: '768px' },
-    { value: 'wide', label: 'Wide', maxWidth: '960px' },
+    // New mapping:
+    // - Narrow now corresponds to the old Medium width
+    // - Medium now corresponds to the old Wide width
+    // - Wide is an even wider layout for large screens
+    { value: 'narrow', label: 'Narrow', maxWidth: '768px' },
+    { value: 'medium', label: 'Medium', maxWidth: '960px' },
+    { value: 'wide', label: 'Wide', maxWidth: '1100px' },
 ];
 
 export const FONT_SIZE_OPTIONS = [

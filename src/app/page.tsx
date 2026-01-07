@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import FileUpload from "@/components/FileUpload";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
@@ -70,6 +70,10 @@ export default function Home() {
   const [editingLanguageId, setEditingLanguageId] = useState<string | null>(null);
   const [editLanguage, setEditLanguage] = useState("");
 
+  // Track initial animation so first load shows full JP/日本語 without typing
+  const hasInitialTitleAnimationRunRef = useRef(false);
+  const hasInitialMasterAnimationRunRef = useRef(false);
+
   // Find longest language name for fixed width
   const longestLanguageName = getLongestLanguageName();
   const longestLanguageCode = "CN"; // All codes are 2 chars, but CN is widest visually
@@ -84,6 +88,14 @@ export default function Home() {
 
   // Typing animation for title (EnsoRead [CODE]) with backspace effect
   useEffect(() => {
+    // On initial load, don't animate; just ensure the correct code is shown
+    if (!hasInitialTitleAnimationRunRef.current) {
+      hasInitialTitleAnimationRunRef.current = true;
+      const initialLang = SUPPORTED_LANGUAGES[currentLanguageIndex];
+      setTitleTypingText(getLanguageCode(initialLang.code));
+      return;
+    }
+
     const prevIndex = currentLanguageIndex === 0 ? SUPPORTED_LANGUAGES.length - 1 : currentLanguageIndex - 1;
     const prevLang = SUPPORTED_LANGUAGES[prevIndex];
     const currentLang = SUPPORTED_LANGUAGES[currentLanguageIndex];
@@ -122,6 +134,14 @@ export default function Home() {
 
   // Typing animation for "Master [language]" - only the language name types with backspace
   useEffect(() => {
+    // On initial load, don't animate; just ensure the correct language name is shown
+    if (!hasInitialMasterAnimationRunRef.current) {
+      hasInitialMasterAnimationRunRef.current = true;
+      const initialLang = SUPPORTED_LANGUAGES[currentLanguageIndex];
+      setMasterTypingText(initialLang.nativeName);
+      return;
+    }
+
     const prevIndex = currentLanguageIndex === 0 ? SUPPORTED_LANGUAGES.length - 1 : currentLanguageIndex - 1;
     const prevLang = SUPPORTED_LANGUAGES[prevIndex];
     const currentLang = SUPPORTED_LANGUAGES[currentLanguageIndex];

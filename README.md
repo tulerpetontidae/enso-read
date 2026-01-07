@@ -54,7 +54,9 @@ By default, you'll find a fragment of *The Tale of Genji* (源氏物語) to expl
 
 ## Recommended
 
-For instant word lookups, pair with the [10ten Japanese Reader](https://github.com/birchill/10ten-ja-reader) browser extension.
+For instant word lookups in Japanese, pair with the [10ten Japanese Reader](https://github.com/birchill/10ten-ja-reader) browser extension.
+
+For other languages, the [Google Dictionary (by Google)](https://chromewebstore.google.com/detail/google-dictionary-by-goog/mgijmajocgfcbeboacabfgobmjgjcoja) Chrome extension is a great way to get quick definitions while browsing.
 
 
 ## Tech

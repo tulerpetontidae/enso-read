@@ -669,9 +669,9 @@ export default function SettingsPage() {
                         borderColor: 'var(--zen-recommend-border)'
                     }}
                 >
-                    <h3 className="text-sm font-medium mb-2" style={{ color: 'var(--zen-recommend-heading)' }}>Recommended Extension</h3>
-                    <p className="text-sm" style={{ color: 'var(--zen-recommend-text)' }}>
-                        For instant word lookups while reading, install the{' '}
+                    <h3 className="text-sm font-medium mb-2" style={{ color: 'var(--zen-recommend-heading)' }}>Recommended Extensions</h3>
+                    <p className="text-sm mb-2" style={{ color: 'var(--zen-recommend-text)' }}>
+                        For instant word lookups in Japanese, install the{' '}
                         <a 
                             href="https://github.com/birchill/10ten-ja-reader"
                             target="_blank"
@@ -680,7 +680,19 @@ export default function SettingsPage() {
                         >
                             10ten Japanese Reader
                         </a>{' '}
-                        browser extension. Simply hover over any Japanese word to see its reading and meaning.
+                        browser extension. Simply hover over any Japanese word to see its reading and meaning. Has automatic word parsing.
+                    </p>
+                    <p className="text-sm" style={{ color: 'var(--zen-recommend-text)' }}>
+                        For other languages, the{' '}
+                        <a
+                            href="https://chromewebstore.google.com/detail/google-dictionary-by-goog/mgijmajocgfcbeboacabfgobmjgjcoja"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium underline"
+                        >
+                            Google Dictionary (by Google)
+                        </a>{' '}
+                        extension provides quick word definitions and translations on a click.
                     </p>
                 </div>
             </main>
