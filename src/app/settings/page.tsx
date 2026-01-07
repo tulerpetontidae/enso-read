@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { db } from '@/lib/db';
 import Link from 'next/link';
 import { FaChevronLeft } from 'react-icons/fa';
@@ -9,6 +9,8 @@ import { FONT_OPTIONS, WIDTH_OPTIONS, FONT_SIZE_OPTIONS, THEME_OPTIONS, applyThe
 import { checkGoogleTranslateAvailable } from '@/lib/browser';
 import type { TranslationEngine } from '@/lib/translation';
 import { SUPPORTED_LANGUAGES } from '@/lib/languages';
+import { exportDatabase, downloadExport } from '@/lib/dbExport';
+import { parseImportFile, validateExportData, importDatabaseOverwrite, importDatabaseMerge } from '@/lib/dbImport';
 
 export default function SettingsPage() {
     const [apiKey, setApiKey] = useState('');
@@ -22,6 +24,16 @@ export default function SettingsPage() {
     const [googleAvailable, setGoogleAvailable] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [saveMessage, setSaveMessage] = useState<string | null>(null);
+    
+    // Data Management state
+    const [importFile, setImportFile] = useState<File | null>(null);
+    const [importMode, setImportMode] = useState<'overwrite' | 'merge'>('merge');
+    const [isExporting, setIsExporting] = useState(false);
+    const [isImporting, setIsImporting] = useState(false);
+    const [importMessage, setImportMessage] = useState<string | null>(null);
+    const [validationErrors, setValidationErrors] = useState<string[]>([]);
+    const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Check Google Translate availability
     useEffect(() => {
@@ -96,6 +108,93 @@ export default function SettingsPage() {
             setSaveMessage('Failed to save settings');
         } finally {
             setIsSaving(false);
+        }
+    };
+
+    const handleExport = async () => {
+        setIsExporting(true);
+        try {
+            const jsonString = await exportDatabase();
+            downloadExport(jsonString);
+            setSaveMessage('Database exported successfully!');
+            setTimeout(() => {
+                setSaveMessage(null);
+            }, 3000);
+        } catch (error) {
+            console.error('Export failed:', error);
+            setSaveMessage('Failed to export database');
+            setTimeout(() => {
+                setSaveMessage(null);
+            }, 3000);
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
+    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setImportFile(file);
+        setValidationErrors([]);
+        setImportMessage(null);
+
+        try {
+            const data = await parseImportFile(file);
+            const validation = validateExportData(data);
+            
+            if (!validation.valid) {
+                setValidationErrors(validation.errors.map(err => `${err.field}: ${err.message}`));
+                setImportFile(null);
+            }
+        } catch (error) {
+            setValidationErrors([error instanceof Error ? error.message : 'Invalid file format']);
+            setImportFile(null);
+        }
+    };
+
+    const handleImport = async () => {
+        if (!importFile) return;
+
+        if (importMode === 'overwrite' && !showOverwriteConfirm) {
+            setShowOverwriteConfirm(true);
+            return;
+        }
+
+        setIsImporting(true);
+        setImportMessage(null);
+        setValidationErrors([]);
+
+        try {
+            const data = await parseImportFile(importFile);
+            const validation = validateExportData(data);
+            
+            if (!validation.valid) {
+                setValidationErrors(validation.errors.map(err => `${err.field}: ${err.message}`));
+                setIsImporting(false);
+                return;
+            }
+
+            if (importMode === 'overwrite') {
+                await importDatabaseOverwrite(data);
+            } else {
+                await importDatabaseMerge(data);
+            }
+
+            setImportMessage('Database imported successfully! Please refresh the page.');
+            setImportFile(null);
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
+            setShowOverwriteConfirm(false);
+            
+            // Reload settings after import
+            window.location.reload();
+        } catch (error) {
+            console.error('Import failed:', error);
+            setImportMessage('Failed to import database: ' + (error instanceof Error ? error.message : 'Unknown error'));
+        } finally {
+            setIsImporting(false);
         }
     };
 
@@ -358,6 +457,170 @@ export default function SettingsPage() {
                                 </div>
                             </div>
                         )}
+                    </div>
+                </div>
+
+                {/* Data Management */}
+                <div className="rounded-2xl shadow-sm overflow-hidden" style={{ backgroundColor: 'var(--zen-card-solid-bg, white)', borderWidth: '1px', borderStyle: 'solid', borderColor: 'var(--zen-border, rgba(0,0,0,0.06))' }}>
+                    <div className="p-6 space-y-4">
+                        <div>
+                            <h2 className="text-lg font-serif font-medium mb-1" style={{ color: 'var(--zen-heading, #1c1917)' }}>
+                                Data Management
+                            </h2>
+                            <p className="text-sm" style={{ color: 'var(--zen-text-muted, #78716c)' }}>
+                                Backup and restore your reading data, translations, and notes.
+                            </p>
+                        </div>
+
+                        {/* Export Section */}
+                        <div className="space-y-3">
+                            <label className="block text-sm font-medium" style={{ color: 'var(--zen-text, #1c1917)' }}>Export Database</label>
+                            <p className="text-xs" style={{ color: 'var(--zen-text-muted, #78716c)' }}>
+                                Download a backup of all your data (books, progress, translations, notes). API keys are excluded for security.
+                            </p>
+                            <button
+                                onClick={handleExport}
+                                disabled={isExporting}
+                                className="px-4 py-2.5 bg-rose-500 hover:bg-rose-600 text-white rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {isExporting ? 'Exporting...' : 'Export Database'}
+                            </button>
+                        </div>
+
+                        <div className="border-t pt-4" style={{ borderColor: 'var(--zen-border, rgba(0,0,0,0.06))' }} />
+
+                        {/* Import Section */}
+                        <div className="space-y-3">
+                            <label className="block text-sm font-medium" style={{ color: 'var(--zen-text, #1c1917)' }}>Import Database</label>
+                            <p className="text-xs" style={{ color: 'var(--zen-text-muted, #78716c)' }}>
+                                Restore data from a backup file. Choose to overwrite all data or merge with existing.
+                            </p>
+                            
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept=".json"
+                                onChange={handleFileSelect}
+                                className="hidden"
+                                id="import-file-input"
+                            />
+                            <label
+                                htmlFor="import-file-input"
+                                className="inline-block px-4 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl font-medium transition-colors cursor-pointer"
+                                style={{
+                                    backgroundColor: 'var(--zen-btn-bg)',
+                                    borderWidth: '1px',
+                                    borderStyle: 'solid',
+                                    borderColor: 'var(--zen-btn-border)',
+                                    color: 'var(--zen-btn-text)'
+                                }}
+                            >
+                                Select Backup File
+                            </label>
+                            
+                            {importFile && (
+                                <div className="text-sm" style={{ color: 'var(--zen-text-muted, #78716c)' }}>
+                                    Selected: {importFile.name}
+                                </div>
+                            )}
+
+                            {validationErrors.length > 0 && (
+                                <div className="p-3 rounded-lg bg-red-50 border border-red-200">
+                                    <p className="text-sm font-medium text-red-800 mb-1">Validation Errors:</p>
+                                    <ul className="text-xs text-red-700 list-disc list-inside space-y-1">
+                                        {validationErrors.map((error, idx) => (
+                                            <li key={idx}>{error}</li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+
+                            {importFile && validationErrors.length === 0 && (
+                                <>
+                                    <div className="space-y-2">
+                                        <label className="block text-sm font-medium" style={{ color: 'var(--zen-text, #1c1917)' }}>Import Mode</label>
+                                        <div className="flex gap-4">
+                                            <label className="flex items-center gap-2 cursor-pointer">
+                                                <input
+                                                    type="radio"
+                                                    name="import-mode"
+                                                    value="merge"
+                                                    checked={importMode === 'merge'}
+                                                    onChange={(e) => setImportMode(e.target.value as 'overwrite' | 'merge')}
+                                                    className="w-4 h-4"
+                                                    style={{ accentColor: '#f43f5e' }}
+                                                />
+                                                <span className="text-sm" style={{ color: 'var(--zen-text, #1c1917)' }}>Merge</span>
+                                            </label>
+                                            <label className="flex items-center gap-2 cursor-pointer">
+                                                <input
+                                                    type="radio"
+                                                    name="import-mode"
+                                                    value="overwrite"
+                                                    checked={importMode === 'overwrite'}
+                                                    onChange={(e) => setImportMode(e.target.value as 'overwrite' | 'merge')}
+                                                    className="w-4 h-4"
+                                                    style={{ accentColor: '#f43f5e' }}
+                                                />
+                                                <span className="text-sm" style={{ color: 'var(--zen-text, #1c1917)' }}>Overwrite All</span>
+                                            </label>
+                                        </div>
+                                        <p className="text-xs" style={{ color: 'var(--zen-text-muted, #78716c)' }}>
+                                            {importMode === 'merge' 
+                                                ? 'Merge will combine data, keeping newer versions of translations and notes.'
+                                                : 'Overwrite will completely replace all existing data. This cannot be undone.'}
+                                        </p>
+                                    </div>
+
+                                    {showOverwriteConfirm && (
+                                        <div className="p-4 rounded-lg bg-amber-50 border border-amber-200">
+                                            <p className="text-sm font-medium text-amber-800 mb-2">
+                                                Warning: This will delete all existing data!
+                                            </p>
+                                            <p className="text-xs text-amber-700 mb-3">
+                                                Are you sure you want to overwrite all your data? This action cannot be undone.
+                                            </p>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={handleImport}
+                                                    disabled={isImporting}
+                                                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                                                >
+                                                    {isImporting ? 'Importing...' : 'Yes, Overwrite Everything'}
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        setShowOverwriteConfirm(false);
+                                                        setImportMode('merge');
+                                                    }}
+                                                    className="px-4 py-2 bg-stone-200 hover:bg-stone-300 text-stone-700 rounded-lg text-sm font-medium transition-colors"
+                                                >
+                                                    Cancel
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {!showOverwriteConfirm && (
+                                        <button
+                                            onClick={handleImport}
+                                            disabled={isImporting}
+                                            className="px-4 py-2.5 bg-rose-500 hover:bg-rose-600 text-white rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            {isImporting ? 'Importing...' : 'Import Database'}
+                                        </button>
+                                    )}
+                                </>
+                            )}
+
+                            {importMessage && (
+                                <div className={`p-3 rounded-lg ${importMessage.includes('success') ? 'bg-emerald-50 border border-emerald-200' : 'bg-red-50 border border-red-200'}`}>
+                                    <p className={`text-sm ${importMessage.includes('success') ? 'text-emerald-800' : 'text-red-800'}`}>
+                                        {importMessage}
+                                    </p>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
 
