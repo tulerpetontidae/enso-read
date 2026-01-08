@@ -356,6 +356,9 @@ export default function ChatAssistant({
                         ? 'rgba(255, 228, 230, 0.8)'
                         : 'rgba(245, 245, 244, 0.8)',
                     color: msg.role === 'user' ? '#9f1239' : '#1c1917',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    lineHeight: '1.5',
                   }}
                 >
                   {msg.content}
