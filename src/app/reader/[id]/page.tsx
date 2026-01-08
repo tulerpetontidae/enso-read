@@ -68,6 +68,7 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
     const [bookTitle, setBookTitle] = useState<string>('');
     const [showAllTranslations, setShowAllTranslations] = useState(false);
     const [showAllComments, setShowAllComments] = useState(false);
+    const [showAllChats, setShowAllChats] = useState(false);
     const [commentPositions, setCommentPositions] = useState<Array<{ top: number; height: number }>>([]);
     const [showCommentIndicators, setShowCommentIndicators] = useState(false); // Toggle: ON = show on scroll, OFF = never show
     const [indicatorsVisible, setIndicatorsVisible] = useState(false); // Actual visibility state (for auto-hide)
@@ -156,6 +157,7 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
                                 paragraphText={textContent}
                                 showAllTranslations={showAllTranslations}
                                 showAllComments={showAllComments}
+                                showAllChats={showAllChats}
                                 zenMode={zenMode}
                                 onNoteChange={() => setNotesVersion(prev => prev + 1)}
                             >
@@ -167,7 +169,7 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
             }
             return undefined;
         }
-    }), [id, showAllTranslations, showAllComments, zenMode]);
+    }), [id, showAllTranslations, showAllComments, showAllChats, zenMode]);
 
     useEffect(() => {
         let bookInstance: Book | null = null;
@@ -486,6 +488,22 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="M12 20h9" />
                                 <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                            </svg>
+                        </button>
+                    )}
+                    {/* Show all chats button (hidden in zen mode) */}
+                    {!zenMode && (
+                        <button
+                            onClick={() => setShowAllChats(!showAllChats)}
+                            className="p-1.5 transition-colors rounded"
+                            style={{ 
+                                color: showAllChats ? 'var(--zen-text, #1c1917)' : 'var(--zen-text-muted, #78716c)',
+                                backgroundColor: showAllChats ? 'var(--zen-accent-bg, rgba(255,255,255,0.5))' : 'transparent'
+                            }}
+                            title="Show all AI chats"
+                        >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                             </svg>
                         </button>
                     )}

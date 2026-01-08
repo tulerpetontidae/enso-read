@@ -4,7 +4,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { db } from '@/lib/db';
 import { translate, type TranslationEngine } from '@/lib/translation';
 import { checkGoogleTranslateAvailable } from '@/lib/browser';
-import { IoTrashOutline } from 'react-icons/io5';
+import { IoTrashOutline, IoChatbubbleOutline } from 'react-icons/io5';
+import ChatAssistant from './ChatAssistant';
 
 // Simple hash function for paragraph text
 function hashText(text: string): string {
@@ -23,6 +24,7 @@ interface TranslatableParagraphProps {
     paragraphText: string;
     showAllTranslations?: boolean;
     showAllComments?: boolean;
+    showAllChats?: boolean;
     zenMode?: boolean;
     onNoteChange?: () => void;
 }
@@ -33,6 +35,7 @@ export default function TranslatableParagraph({
     paragraphText,
     showAllTranslations = false,
     showAllComments = false,
+    showAllChats = false,
     zenMode = false,
     onNoteChange
 }: TranslatableParagraphProps) {
@@ -40,6 +43,7 @@ export default function TranslatableParagraph({
     const [isHovered, setIsHovered] = useState(false);
     const [isButtonHovered, setIsButtonHovered] = useState(false);
     const [isNoteButtonHovered, setIsNoteButtonHovered] = useState(false);
+    const [isChatButtonHovered, setIsChatButtonHovered] = useState(false);
     
     // Translation state
     const [translation, setTranslation] = useState<string | null>(null);
@@ -54,6 +58,10 @@ export default function TranslatableParagraph({
     const [isNoteSaving, setIsNoteSaving] = useState(false);
     const [noteHeight, setNoteHeight] = useState(80); // Default height in pixels
     
+    // Chat state
+    const [isChatOpen, setIsChatOpen] = useState(false);
+    const [hasChat, setHasChat] = useState(false);
+    
     const containerRef = useRef<HTMLDivElement>(null);
     const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
     const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -61,14 +69,16 @@ export default function TranslatableParagraph({
     const paragraphHash = hashText(paragraphText);
     const translationId = `${bookId}-${paragraphHash}`;
     const noteId = `${bookId}-${paragraphHash}`;
+    const threadId = `${bookId}|${paragraphHash}`;
 
-    // Check for cached translation and note on mount
+    // Check for cached translation, note, and chat on mount
     useEffect(() => {
         const loadCachedData = async () => {
             try {
-                const [cachedTranslation, cachedNote] = await Promise.all([
+                const [cachedTranslation, cachedNote, chatMessages] = await Promise.all([
                     db.translations.get(translationId),
                     db.notes.get(noteId),
+                    db.chats.where('threadId').equals(threadId).toArray(),
                 ]);
                 if (cachedTranslation) {
                     setTranslation(cachedTranslation.translatedText);
@@ -81,12 +91,15 @@ export default function TranslatableParagraph({
                         setNoteHeight(cachedNote.height);
                     }
                 }
+                if (chatMessages && chatMessages.length > 0) {
+                    setHasChat(true);
+                }
             } catch (e) {
                 console.error('Failed to load cached data:', e);
             }
         };
         loadCachedData();
-    }, [translationId, noteId]);
+    }, [translationId, noteId, threadId]);
     
     // Track previous showAll states to detect changes
     const prevShowAllTranslationsRef = useRef(showAllTranslations);
@@ -117,6 +130,21 @@ export default function TranslatableParagraph({
             }
         }
     }, [showAllComments, savedNoteContent]);
+    
+    // Track previous showAllChats state
+    const prevShowAllChatsRef = useRef(showAllChats);
+    
+    // When showAllChats changes, always override local state
+    useEffect(() => {
+        if (prevShowAllChatsRef.current !== showAllChats) {
+            prevShowAllChatsRef.current = showAllChats;
+            if (showAllChats && hasChat) {
+                setIsChatOpen(true);
+            } else if (!showAllChats) {
+                setIsChatOpen(false);
+            }
+        }
+    }, [showAllChats, hasChat]);
 
     const handleMouseEnter = () => {
         if (hoverTimeoutRef.current) {
@@ -319,9 +347,36 @@ export default function TranslatableParagraph({
         }
     };
 
-    const showButtons = isHovered || isButtonHovered || isNoteButtonHovered || isNoteOpen;
+    const showButtons = isHovered || isButtonHovered || isNoteButtonHovered || isChatButtonHovered || isNoteOpen || isChatOpen;
     const hasTranslation = !!translation;
     const hasNote = !!savedNoteContent;
+    
+    const handleChatClick = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsChatOpen(!isChatOpen);
+        if (!isChatOpen && !hasChat) {
+            // When opening chat for first time, mark as having chat
+            setHasChat(true);
+        }
+    };
+    
+    // Update hasChat when chat messages are added (listen to database changes)
+    useEffect(() => {
+        const checkChatExists = async () => {
+            try {
+                const chatMessages = await db.chats.where('threadId').equals(threadId).toArray();
+                setHasChat(chatMessages.length > 0);
+            } catch (e) {
+                console.error('Failed to check chat:', e);
+            }
+        };
+        
+        // Check periodically and on mount
+        checkChatExists();
+        const interval = setInterval(checkChatExists, 2000);
+        return () => clearInterval(interval);
+    }, [threadId]);
 
     return (
         <div 
@@ -445,6 +500,42 @@ export default function TranslatableParagraph({
                 </button>
             )}
 
+            {/* Chat button - right side, next to note button (hidden in zen mode) */}
+            {!zenMode && (
+                <button
+                    onClick={handleChatClick}
+                    onMouseEnter={() => setIsChatButtonHovered(true)}
+                    onMouseLeave={() => setIsChatButtonHovered(false)}
+                    className={`
+                        absolute -right-12 top-1 
+                        w-8 h-8 
+                        flex items-center justify-center 
+                        rounded-full 
+                        transition-all duration-300 ease-out
+                        ${(showButtons || hasChat) ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2'}
+                        ${isChatOpen ? 'ring-2' : ''}
+                        focus:outline-none focus:ring-2
+                    `}
+                    style={{
+                        boxShadow: (showButtons || hasChat) ? '0 4px 12px rgba(0,0,0,0.08)' : 'none',
+                        backgroundColor: hasChat 
+                            ? 'var(--zen-note-btn-active-bg, rgba(139, 92, 246, 0.15))' 
+                            : 'var(--zen-note-btn-bg, rgba(255, 255, 255, 0.9))',
+                        borderWidth: hasChat ? '2px' : '1px',
+                        borderStyle: 'solid',
+                        borderColor: hasChat 
+                            ? 'var(--zen-note-btn-active-border, rgba(139, 92, 246, 0.4))' 
+                            : 'var(--zen-note-btn-border, rgba(0, 0, 0, 0.1))',
+                        color: hasChat 
+                            ? 'var(--zen-note-btn-active-text, rgba(139, 92, 246, 0.8))' 
+                            : 'var(--zen-note-btn-text, rgba(0, 0, 0, 0.5))',
+                    }}
+                    title={hasChat ? 'Open AI chat' : 'Start AI chat'}
+                >
+                    <IoChatbubbleOutline size={14} />
+                </button>
+            )}
+
             {/* Original paragraph content - reduce margin when translation shown */}
             <div style={{ marginBottom: showTranslation ? '-22px' : '0' }}>
                 {children}
@@ -474,6 +565,25 @@ export default function TranslatableParagraph({
                         <IoTrashOutline size={14} />
                     </button>
                 </div>
+            )}
+
+            {/* Chat Assistant (hidden in zen mode) */}
+            {!zenMode && (
+                <ChatAssistant
+                    bookId={bookId}
+                    paragraphHash={paragraphHash}
+                    paragraphText={paragraphText}
+                    translation={translation}
+                    isOpen={isChatOpen}
+                    onClose={() => setIsChatOpen(false)}
+                    showAllChats={showAllChats}
+                    noteHeight={isNoteOpen ? noteHeight : 0}
+                    isNoteOpen={isNoteOpen}
+                    onChatDeleted={() => {
+                        setHasChat(false);
+                        setIsChatOpen(false);
+                    }}
+                />
             )}
 
             {/* Note input area (hidden in zen mode) */}

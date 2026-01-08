@@ -47,6 +47,16 @@ interface Note {
   updatedAt: number;
 }
 
+interface ChatMessage {
+  id: string; // auto-generated UUID
+  threadId: string; // bookId + '|' + paragraphHash
+  bookId: string;
+  paragraphHash: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: number;
+}
+
 const db = new Dexie('EnsoReadDB') as Dexie & {
   books: EntityTable<Book, 'id'>;
   progress: EntityTable<Progress, 'bookId'>;
@@ -54,6 +64,7 @@ const db = new Dexie('EnsoReadDB') as Dexie & {
   dictionary: EntityTable<DictionaryEntry, 'id'>;
   translations: EntityTable<Translation, 'id'>;
   notes: EntityTable<Note, 'id'>;
+  chats: EntityTable<ChatMessage, 'id'>;
 };
 
 // Schema declaration
@@ -93,5 +104,15 @@ db.version(5).stores({
   // No data migration needed as it's an optional field
 });
 
-export type { Book, Progress, WebConfig, DictionaryEntry, Translation, Note };
+db.version(6).stores({
+  books: 'id, title, addedAt, sourceLanguage',
+  progress: 'bookId, updatedAt',
+  settings: 'key',
+  dictionary: '++id, kanji, reading, *tags',
+  translations: 'id, bookId, paragraphHash, createdAt',
+  notes: 'id, bookId, paragraphHash, updatedAt',
+  chats: 'id, threadId, bookId, paragraphHash, createdAt'
+});
+
+export type { Book, Progress, WebConfig, DictionaryEntry, Translation, Note, ChatMessage };
 export { db };
