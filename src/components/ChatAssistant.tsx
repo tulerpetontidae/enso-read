@@ -337,34 +337,53 @@ export default function ChatAssistant({
               pointerEvents: showDeleteConfirm ? 'none' : 'auto',
             }}
           >
-            {messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`text-xs mb-3 ${
-                  msg.role === 'user' ? 'text-right' : 'text-left'
-                }`}
-              >
+            {messages.map((msg) => {
+              // Parse markdown bold (**text**) for assistant messages
+              const renderContent = (content: string) => {
+                if (msg.role === 'assistant') {
+                  // Convert **text** to <strong>text</strong>
+                  // Match **text** patterns (non-greedy to handle multiple instances)
+                  const parts = content.split(/(\*\*[^*]+\*\*)/g);
+                  return parts.map((part, index) => {
+                    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+                      const boldText = part.slice(2, -2);
+                      return <strong key={index} style={{ fontWeight: 600 }}>{boldText}</strong>;
+                    }
+                    return <span key={index}>{part}</span>;
+                  });
+                }
+                return content;
+              };
+
+              return (
                 <div
-                  className={`inline-block px-3 py-2 rounded-lg max-w-[85%] ${
-                    msg.role === 'user'
-                      ? 'bg-rose-100 text-rose-900'
-                      : 'bg-stone-100 text-stone-900'
+                  key={msg.id}
+                  className={`text-xs mb-3 ${
+                    msg.role === 'user' ? 'text-right' : 'text-left'
                   }`}
-                  style={{
-                    backgroundColor:
-                      msg.role === 'user'
-                        ? 'rgba(255, 228, 230, 0.8)'
-                        : 'rgba(245, 245, 244, 0.8)',
-                    color: msg.role === 'user' ? '#9f1239' : '#1c1917',
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
-                    lineHeight: '1.5',
-                  }}
                 >
-                  {msg.content}
+                  <div
+                    className={`inline-block px-3 py-2 rounded-lg max-w-[85%] ${
+                      msg.role === 'user'
+                        ? 'bg-rose-100 text-rose-900'
+                        : 'bg-stone-100 text-stone-900'
+                    }`}
+                    style={{
+                      backgroundColor:
+                        msg.role === 'user'
+                          ? 'rgba(255, 228, 230, 0.8)'
+                          : 'rgba(245, 245, 244, 0.8)',
+                      color: msg.role === 'user' ? '#9f1239' : '#1c1917',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                      lineHeight: '1.5',
+                    }}
+                  >
+                    {renderContent(msg.content)}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
           {showDeleteConfirm && (
             <div
