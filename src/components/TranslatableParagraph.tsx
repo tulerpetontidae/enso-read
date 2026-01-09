@@ -253,6 +253,7 @@ const TranslatableParagraph = React.memo(function TranslatableParagraph({
                 noteContent: noteContent || '',
                 bookId,
                 chatThreadId: `${bookId}|${paragraphHash}`,
+                hasChat,
             });
         }
     };
@@ -492,6 +493,7 @@ const TranslatableParagraph = React.memo(function TranslatableParagraph({
                 noteContent: noteContent || '',
                 bookId,
                 chatThreadId: `${bookId}|${paragraphHash}`,
+                hasChat,
             });
         } else {
             // Desktop: toggle note sidebar
@@ -659,6 +661,7 @@ const TranslatableParagraph = React.memo(function TranslatableParagraph({
                 noteContent: noteContent || '',
                 bookId,
                 chatThreadId: `${bookId}|${paragraphHash}`,
+                hasChat,
             });
         } else {
             // Desktop: toggle chat sidebar

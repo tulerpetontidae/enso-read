@@ -260,17 +260,20 @@ function ChatAssistant({
   // Mobile: render simplified version for bottom panel
   if (isMobile) {
     return (
-      <div className="h-full flex flex-col p-3">
+      <div
+        className="h-full flex flex-col p-3"
+        style={{ backgroundColor: 'var(--zen-note-panel-bg, var(--zen-note-bg, #fffbeb))' }}
+      >
         {/* Messages - scrollable */}
         <div
           ref={messagesContainerRef}
-          className="flex-1 overflow-y-auto space-y-3 relative mb-3"
-          style={{
-            minHeight: '100px',
-          }}
+          className="flex-1 min-h-0 overflow-y-auto space-y-3 relative mb-3"
         >
           {messages.length === 0 && (
-            <div className="text-xs text-center py-4" style={{ color: 'var(--zen-text-muted, #78716c)' }}>
+            <div
+              className="text-xs text-center py-4"
+              style={{ color: 'var(--zen-text-muted, #78716c)' }}
+            >
               Ask a question about this paragraph...
             </div>
           )}
@@ -307,17 +310,15 @@ function ChatAssistant({
                   }`}
                 >
                   <div
-                    className={`inline-block px-3 py-2 rounded-lg max-w-[85%] ${
-                      msg.role === 'user'
-                        ? 'bg-rose-100 text-rose-900'
-                        : 'bg-stone-100 text-stone-900'
-                    }`}
+                    className="inline-block px-3 py-2 rounded-lg max-w-[85%]"
                     style={{
                       backgroundColor:
                         msg.role === 'user'
-                          ? 'rgba(255, 228, 230, 0.8)'
-                          : 'rgba(245, 245, 244, 0.8)',
-                      color: msg.role === 'user' ? '#9f1239' : '#1c1917',
+                          ? 'var(--zen-chat-user-bg, rgba(255, 228, 230, 0.8))'
+                          : 'var(--zen-chat-assistant-bg, rgba(245, 245, 244, 0.9))',
+                      color: msg.role === 'user'
+                        ? 'var(--zen-chat-user-text, #9f1239)'
+                        : 'var(--zen-chat-assistant-text, #1c1917)',
                       whiteSpace: 'pre-wrap',
                       wordBreak: 'break-word',
                       lineHeight: '1.5',
@@ -395,13 +396,19 @@ function ChatAssistant({
               <div
                 className="inline-block px-3 py-2 rounded-lg bg-stone-100 text-stone-900"
                 style={{
-                  backgroundColor: 'rgba(245, 245, 244, 0.8)',
-                  color: '#1c1917',
+                  backgroundColor: 'var(--zen-chat-loading-bg, rgba(245, 245, 244, 0.9))',
+                  color: 'var(--zen-chat-loading-text, #1c1917)',
                 }}
               >
                 <span className="inline-block w-2 h-2 bg-stone-400 rounded-full animate-pulse mr-1" />
-                <span className="inline-block w-2 h-2 bg-stone-400 rounded-full animate-pulse mr-1" style={{ animationDelay: '0.2s' }} />
-                <span className="inline-block w-2 h-2 bg-stone-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }} />
+                <span
+                  className="inline-block w-2 h-2 bg-stone-400 rounded-full animate-pulse mr-1"
+                  style={{ animationDelay: '0.2s' }}
+                />
+                <span
+                  className="inline-block w-2 h-2 bg-stone-400 rounded-full animate-pulse"
+                  style={{ animationDelay: '0.4s' }}
+                />
               </div>
             </div>
           )}
@@ -410,12 +417,15 @@ function ChatAssistant({
 
         {/* Error message - fixed at bottom */}
         {error && (
-          <div className="shrink-0 px-3 py-2 text-xs text-red-600 bg-red-50 border-t" style={{ borderColor: 'var(--zen-note-border, #fde68a)' }}>
+          <div
+            className="shrink-0 px-3 py-2 text-xs text-red-600 bg-red-50 border-t"
+            style={{ borderColor: 'var(--zen-note-border, #fde68a)' }}
+          >
             {error}
           </div>
         )}
 
-        {/* Input area - fixed at bottom */}
+        {/* Input area - fixed at bottom (button always visible) */}
         <div className="shrink-0 border-t" style={{ borderColor: 'var(--zen-note-border, #fde68a)' }}>
           <textarea
             value={inputValue}

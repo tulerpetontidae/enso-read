@@ -19,6 +19,7 @@ export interface PanelOpenPayload {
   // Chat data
   bookId?: string;
   chatThreadId?: string;
+  hasChat?: boolean;
 }
 
 export interface PanelContentUpdatePayload {

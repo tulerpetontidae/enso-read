@@ -120,7 +120,10 @@ function NoteEditor({
         onChange={handleChange}
         className="flex-1 w-full resize-none rounded-lg p-3 text-sm focus:outline-none focus:ring-2"
         style={{
-          backgroundColor: 'var(--zen-note-content-bg, #fffbeb)',
+          // Let theme control the actual color; provide sensible fallbacks:
+          // - light/sepia: warm beige
+          // - dark: near-black, via --zen-note-bg / --zen-reader-bg
+          backgroundColor: 'var(--zen-note-bg, var(--zen-note-content-bg, #fffbeb))',
           color: 'var(--zen-text, #1a1a1a)',
           borderWidth: '1px',
           borderStyle: 'solid',
@@ -208,6 +211,7 @@ interface PanelContent {
   // Chat
   bookId: string;
   chatThreadId: string;
+  hasChat?: boolean;
 }
 
 /**
@@ -253,6 +257,7 @@ function MobileBottomPanel() {
         noteContent: payload.noteContent || '',
         bookId: payload.bookId || '',
         chatThreadId: payload.chatThreadId || `${payload.bookId}|${payload.paragraphHash}`,
+        hasChat: payload.hasChat ?? false,
       });
       setActiveTab(payload.tab);
       setIsOpen(true);
@@ -645,14 +650,21 @@ function MobileBottomPanel() {
                   e.stopPropagation();
                   setActiveTab('translation');
                 }}
-                className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-medium transition-colors ${
-                  activeTab === 'translation' ? '' : 'opacity-60'
+                className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-medium transition-colors border ${
+                  activeTab === 'translation'
+                    ? 'border-emerald-400 shadow-sm'
+                    : 'border-transparent'
                 }`}
                 style={{
-                  backgroundColor: activeTab === 'translation' 
-                    ? 'var(--zen-translation-btn-active-bg, rgba(16, 185, 129, 0.2))' 
-                    : 'transparent',
-                  color: 'var(--zen-note-header-text, #b45309)',
+                  backgroundColor:
+                    activeTab === 'translation'
+                      ? 'var(--zen-translation-btn-active-bg, rgba(16, 185, 129, 0.3))'
+                      : content.translation
+                      ? 'rgba(16, 185, 129, 0.12)'
+                      : 'transparent',
+                  color: activeTab === 'translation'
+                    ? 'var(--zen-tab-text-active, var(--zen-text, #0f172a))'
+                    : 'var(--zen-tab-text, var(--zen-text, #0f172a))',
                 }}
               >
                 Translation
@@ -662,14 +674,21 @@ function MobileBottomPanel() {
                   e.stopPropagation();
                   setActiveTab('note');
                 }}
-                className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-medium transition-colors ${
-                  activeTab === 'note' ? '' : 'opacity-60'
+                className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-medium transition-colors border ${
+                  activeTab === 'note'
+                    ? 'border-amber-400 shadow-sm'
+                    : 'border-transparent'
                 }`}
                 style={{
-                  backgroundColor: activeTab === 'note' 
-                    ? 'var(--zen-note-active-bg, rgba(245, 158, 11, 0.2))' 
-                    : 'transparent',
-                  color: 'var(--zen-note-header-text, #b45309)',
+                  backgroundColor:
+                    activeTab === 'note'
+                      ? 'var(--zen-note-active-bg, rgba(245, 158, 11, 0.2))'
+                      : content.noteContent?.trim()
+                      ? 'rgba(245, 158, 11, 0.12)'
+                      : 'transparent',
+                  color: activeTab === 'note'
+                    ? 'var(--zen-tab-text-active, var(--zen-text, #0f172a))'
+                    : 'var(--zen-tab-text, var(--zen-text, #0f172a))',
                 }}
               >
                 Note
@@ -679,14 +698,21 @@ function MobileBottomPanel() {
                   e.stopPropagation();
                   setActiveTab('chat');
                 }}
-                className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-medium transition-colors ${
-                  activeTab === 'chat' ? '' : 'opacity-60'
+                className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-medium transition-colors border ${
+                  activeTab === 'chat'
+                    ? 'border-violet-400 shadow-sm'
+                    : 'border-transparent'
                 }`}
                 style={{
-                  backgroundColor: activeTab === 'chat' 
-                    ? 'var(--zen-note-active-bg, rgba(139, 92, 246, 0.2))' 
-                    : 'transparent',
-                  color: 'var(--zen-note-header-text, #b45309)',
+                  backgroundColor:
+                    activeTab === 'chat'
+                      ? 'rgba(139, 92, 246, 0.2)'
+                      : content.hasChat
+                      ? 'rgba(139, 92, 246, 0.12)'
+                      : 'transparent',
+                  color: activeTab === 'chat'
+                    ? 'var(--zen-tab-text-active, var(--zen-text, #0f172a))'
+                    : 'var(--zen-tab-text, var(--zen-text, #0f172a))',
                 }}
               >
                 Chat
