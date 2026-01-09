@@ -339,23 +339,30 @@ const TranslatableParagraph = React.memo(function TranslatableParagraph({
         try {
             // Get translation engine, API key, target language, and book source language
             const { getApiKey } = await import('@/lib/apiKeyStorage');
-            const [engineSetting, apiKeyValue, targetLangSetting, book] = await Promise.all([
+            const [engineSetting, apiKeyValue, targetLangSetting, bergamotSourceSetting, bergamotTargetSetting, book] = await Promise.all([
                 db.settings.get('translation_engine'),
                 getApiKey(),
                 db.settings.get('target_language'),
+                db.settings.get('bergamot_source_language'),
+                db.settings.get('bergamot_target_language'),
                 db.books.get(bookId),
             ]);
 
             let selectedEngine: TranslationEngine = 'openai';
             let apiKey: string | undefined = apiKeyValue || undefined;
-            const targetLanguage = targetLangSetting?.value || 'en';
-            const sourceLanguage = book?.sourceLanguage || 'ja'; // Default to Japanese for backward compatibility
+            let targetLanguage = targetLangSetting?.value || 'en';
+            let sourceLanguage = book?.sourceLanguage || 'ja'; // Default to Japanese for backward compatibility
 
             // Determine which engine to use
             if (engineSetting?.value === 'google') {
                 selectedEngine = 'google';
             } else if (engineSetting?.value === 'openai') {
                 selectedEngine = 'openai';
+            } else if (engineSetting?.value === 'bergamot') {
+                selectedEngine = 'bergamot';
+                // Use Bergamot-specific language pair
+                sourceLanguage = bergamotSourceSetting?.value || 'ja';
+                targetLanguage = bergamotTargetSetting?.value || 'en';
             } else {
                 // No engine selected - try to auto-select
                 const googleAvailable = await checkGoogleTranslateAvailable();
@@ -381,6 +388,15 @@ const TranslatableParagraph = React.memo(function TranslatableParagraph({
             } else if (selectedEngine === 'openai') {
                 if (!apiKey) {
                     setError('Please set your OpenAI API key in settings');
+                    setIsLoading(false);
+                    return;
+                }
+            } else if (selectedEngine === 'bergamot') {
+                // Check if model is loaded
+                const { isBergamotModelLoaded } = await import('@/lib/translation');
+                const modelLoaded = await isBergamotModelLoaded(sourceLanguage, targetLanguage);
+                if (!modelLoaded) {
+                    setError('Bergamot model not loaded. Please load the model in Settings first.');
                     setIsLoading(false);
                     return;
                 }
