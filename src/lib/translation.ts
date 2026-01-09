@@ -120,28 +120,29 @@ export async function translateWithOpenAI(
 // Map of language pair keys to translator instances
 const bergamotTranslators = new Map<string, any>();
 
+// Map of language pair keys to active loaders (for cancellation)
+const activeLoaders = new Map<string, { abortController: AbortController; onProgress?: (progress: number) => void }>();
+
 // Cache for available language pairs
 let availableLanguagePairsCache: Map<string, string[]> | null = null;
-// Pending fetch promise to deduplicate simultaneous requests
-let pendingFetch: Promise<Map<string, string[]>> | null = null;
 
 /**
- * Clear the cache for available language pairs
- * Useful for retrying after a failed fetch
+ * Clear the cached language pairs (useful for retry after errors)
  */
 export function clearBergamotLanguagePairsCache(): void {
   availableLanguagePairsCache = null;
-  pendingFetch = null;
 }
 
 /**
- * Fetch available language pairs from the Mozilla registry
- * Only works in browser environment (client-side)
- * Uses request deduplication to prevent multiple simultaneous fetches
+ * Fetch available language pairs from the Mozilla registry via API proxy
+ * Uses Next.js API route to bypass CORS restrictions
+ * @param retries Number of retry attempts (default: 3)
+ * @returns Map of source language codes to arrays of target language codes
  */
-export async function getAvailableBergamotLanguagePairs(): Promise<Map<string, string[]>> {
-  // Browser environment check - prevent SSR execution
+export async function getAvailableBergamotLanguagePairs(retries: number = 3): Promise<Map<string, string[]>> {
+  // Client-side check
   if (typeof window === 'undefined') {
+    console.warn('getAvailableBergamotLanguagePairs called on server-side, returning empty map');
     return new Map();
   }
 
@@ -150,45 +151,51 @@ export async function getAvailableBergamotLanguagePairs(): Promise<Map<string, s
     return availableLanguagePairsCache;
   }
 
-  // If there's already a pending fetch, return that promise instead of starting a new one
-  if (pendingFetch) {
+  // Use API route to bypass CORS
+  const apiUrl = '/api/bergamot/registry';
+  
+  let lastError: Error | null = null;
+  
+  // Retry logic with exponential backoff
+  for (let attempt = 0; attempt < retries; attempt++) {
     try {
-      return await pendingFetch;
-    } catch {
-      // If pending fetch fails, clear it and allow retry
-      pendingFetch = null;
-    }
-  }
-
-  const registryUrl = 'https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/db/models.json';
-
-  // Create the fetch promise with simple timeout protection
-  pendingFetch = Promise.race([
-    (async () => {
-      const response = await fetch(registryUrl, {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
+      const response = await fetch(apiUrl, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
         },
-        mode: 'cors',
-        credentials: 'omit',
+        signal: controller.signal,
+        cache: 'default', // Allow browser caching
       });
+      
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
-        throw new Error(`Registry fetch failed: ${response.status} ${response.statusText}`);
+        const errorText = await response.text().catch(() => 'Unknown error');
+        throw new Error(`Registry fetch failed: ${response.status} ${response.statusText} - ${errorText}`);
       }
 
       const data = await response.json();
       
-      if (!data || typeof data !== 'object' || !data.models) {
-        throw new Error('Invalid registry format: missing "models" property');
+      // Validate response structure
+      if (!data || typeof data !== 'object') {
+        throw new Error('Invalid registry response: expected object');
       }
-      
+
+      if (!data.models || typeof data.models !== 'object') {
+        throw new Error('Invalid registry format: missing or invalid "models" field');
+      }
+
       const pairs = new Map<string, string[]>();
       
+      // Parse the registry format: { "models": { "ja-en": [...], "en-ja": [...] } }
       for (const [pairKey, models] of Object.entries(data.models || {})) {
         const [source, target] = pairKey.split('-');
         if (source && target && Array.isArray(models) && models.length > 0) {
+          // Store both directions if available
           if (!pairs.has(source)) {
             pairs.set(source, []);
           }
@@ -196,27 +203,38 @@ export async function getAvailableBergamotLanguagePairs(): Promise<Map<string, s
         }
       }
       
-      if (pairs.size > 0) {
-        availableLanguagePairsCache = pairs;
+      if (pairs.size === 0) {
+        throw new Error('Registry fetched but no valid language pairs found');
+      }
+
+      // Cache the result
+      availableLanguagePairsCache = pairs;
+      console.log(`Bergamot registry loaded: ${pairs.size} source languages with models`);
+      return pairs;
+      
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      
+      // Don't retry on abort (timeout)
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.error('Registry fetch timeout after 10 seconds');
+        break;
       }
       
-      return pairs;
-    })(),
-    // Timeout after 3 seconds (shorter for UI responsiveness)
-    new Promise<Map<string, string[]>>((_, reject) => {
-      setTimeout(() => reject(new Error('Timeout')), 3000);
-    }),
-  ]).catch((error) => {
-    if (error instanceof Error && error.message !== 'Timeout') {
-      console.error('Failed to fetch Bergamot language pairs:', error.message);
+      // Don't retry on last attempt
+      if (attempt < retries - 1) {
+        const delay = Math.min(1000 * Math.pow(2, attempt), 5000); // Exponential backoff, max 5s
+        console.warn(`Registry fetch attempt ${attempt + 1} failed, retrying in ${delay}ms...`, lastError);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        console.error(`Failed to fetch Bergamot language pairs after ${retries} attempts:`, lastError);
+      }
     }
-    return new Map();
-  }).finally(() => {
-    // Always clear pending fetch after completion
-    pendingFetch = null;
-  });
+  }
 
-  return pendingFetch;
+  // All retries failed
+  console.error('Failed to fetch Bergamot registry:', lastError);
+  return new Map();
 }
 
 /**
@@ -362,20 +380,56 @@ export async function getAllBergamotLanguagePairs(): Promise<{
 /**
  * Get or create a Bergamot translator instance for a language pair
  * Models are automatically downloaded when translate() is called
+ * @param sourceLang Source language code
+ * @param targetLang Target language code
+ * @param abortSignal Optional AbortSignal to cancel the operation
+ * @param onProgress Optional progress callback (0-100)
  */
 async function getBergamotTranslator(
   sourceLang: string,
   targetLang: string,
+  abortSignal?: AbortSignal,
   onProgress?: (progress: number) => void
 ): Promise<any> {
   const modelKey = `${sourceLang}-${targetLang}`;
+  
+  // Check if cancelled before starting
+  if (abortSignal?.aborted) {
+    throw new Error('Operation aborted');
+  }
   
   // If we already have a translator for this language pair, return it
   if (bergamotTranslators.has(modelKey)) {
     return bergamotTranslators.get(modelKey);
   }
 
+  // Check if there's already a loader for this pair
+  if (activeLoaders.has(modelKey)) {
+    // Wait for existing loader to complete or fail
+    // This prevents duplicate downloads
+    while (activeLoaders.has(modelKey) && !abortSignal?.aborted) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      if (bergamotTranslators.has(modelKey)) {
+        return bergamotTranslators.get(modelKey);
+      }
+    }
+    
+    if (abortSignal?.aborted) {
+      throw new Error('Operation aborted');
+    }
+    
+    // If loader finished but translator wasn't created, continue below
+  }
+
+  // Create abort controller for this operation
+  const controller = new AbortController();
+  const abortHandler = () => controller.abort();
+  abortSignal?.addEventListener('abort', abortHandler);
+  
   try {
+    // Register this loader
+    activeLoaders.set(modelKey, { abortController: controller, onProgress });
+    
     // Import LatencyOptimisedTranslator and TranslatorBacking
     const { LatencyOptimisedTranslator, TranslatorBacking } = await import('@browsermt/bergamot-translator/translator.js');
     
@@ -383,176 +437,365 @@ async function getBergamotTranslator(
     // We extend TranslatorBacking to inherit all model loading functionality
     class CustomBacking extends TranslatorBacking {
       private baseUrl: string = '';
-      private registryCache: any[] | null = null;
+      private abortSignal?: AbortSignal;
+      private onProgress?: (progress: number) => void;
+      private filesDownloaded: number = 0;
+      private totalFilesEstimate: number = 3; // Typical: model, vocab, lex (per model)
+      private isPivot: boolean = false;
+      private sourceLang: string;
+      private targetLang: string;
 
-      constructor(options: any) {
+      constructor(options: any, abortSignal?: AbortSignal, onProgress?: (progress: number) => void, sourceLang?: string, targetLang?: string) {
+        // Use the API route for registry (bypasses CORS)
+        const registryUrl = typeof window !== 'undefined' 
+          ? `${window.location.origin}/api/bergamot/registry`
+          : 'https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/db/models.json';
+        
         // Use the new Mozilla registry URL and ensure pivot through English is enabled
         const mergedOptions = {
           ...options,
-          registryUrl: options.registryUrl || 'https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/db/models.json',
+          registryUrl: options.registryUrl || registryUrl,
           pivotLanguage: options.pivotLanguage ?? 'en', // Enable pivot translation through English
         };
         // Call parent constructor to initialize registry, buffers, etc.
-        // Note: parent constructor might try to load registry, but our override will handle it
         super(mergedOptions);
+        this.abortSignal = abortSignal;
+        this.onProgress = onProgress;
+        this.sourceLang = sourceLang || '';
+        this.targetLang = targetLang || '';
+      }
+      
+      // Update progress helper with throttling to ensure UI updates are visible
+      private lastProgressUpdate: number = 0;
+      private updateProgress(baseProgress: number, fileProgress: number, fileWeight: number): void {
+        if (this.onProgress) {
+          // baseProgress is the base percentage (e.g., 5% for registry loaded)
+          // fileProgress is progress for current file (0-100)
+          // fileWeight is how much this file contributes to total (e.g., 0.5 for 50%)
+          const progress = baseProgress + (fileProgress * fileWeight / 100);
+          const clampedProgress = Math.min(95, Math.max(0, Math.round(progress)));
+          
+          // Throttle updates to at most once every 100ms to ensure UI can render
+          const now = Date.now();
+          if (clampedProgress !== this.lastProgressUpdate || now - this.lastProgressUpdate > 100) {
+            this.onProgress(clampedProgress);
+            this.lastProgressUpdate = clampedProgress;
+          }
+        }
+      }
+      
+      // Check for abort before operations
+      private checkAborted(): void {
+        if (this.abortSignal?.aborted || controller.signal.aborted) {
+          throw new Error('Operation aborted by user');
+        }
       }
 
       // Override loadModelRegistery to parse the new registry format
       async loadModelRegistery(): Promise<any[]> {
-        // Return cached registry if available
-        if (this.registryCache) {
-          console.log('[Bergamot] Returning cached registry');
-          return this.registryCache;
-        }
-
-        console.log('[Bergamot] Loading model registry from:', this.registryUrl);
+        this.checkAborted();
         
-        try {
-          // Simple fetch - let browser handle caching and timeouts naturally
-          const response = await fetch(this.registryUrl, { 
-            credentials: 'omit',
-            mode: 'cors',
-          });
-
-          console.log('[Bergamot] Registry fetch response status:', response.status);
-
-          if (!response.ok) {
-            throw new Error(`Registry fetch failed: ${response.status} ${response.statusText}`);
-          }
-
-          const data = await response.json();
-          console.log('[Bergamot] Registry loaded, parsing models...');
+        // Start at 5% (registry loading)
+        this.updateProgress(0, 0, 0);
+        
+        const response = await fetch(this.registryUrl, { 
+          credentials: 'omit',
+          signal: controller.signal,
+        });
+        
+        this.checkAborted();
+        
+        const data = await response.json();
+        
+        // Registry loaded - 5%
+        this.updateProgress(5, 100, 0);
+        
+        // Store baseUrl for model file loading
+        this.baseUrl = data.baseUrl || 'https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data';
+        
+        // Parse the new format: { "models": { "ja-en": [{ files: {...} }] } }
+        const registry: any[] = [];
+        
+        // Check if this is a pivot translation by looking for both source-en and en-target
+        const pivotLang = 'en';
+        this.isPivot = this.sourceLang !== pivotLang && this.targetLang !== pivotLang && 
+                      data.models?.[`${this.sourceLang}-${pivotLang}`] && 
+                      data.models?.[`${pivotLang}-${this.targetLang}`];
+        
+        // Estimate total files: for pivot we have 2 models, for direct 1 model
+        // Each model typically has: model file (largest), vocab, lex
+        this.totalFilesEstimate = this.isPivot ? 6 : 3;
+        this.filesDownloaded = 0;
+        
+        for (const [pairKey, models] of Object.entries(data.models || {})) {
+          if (!Array.isArray(models) || models.length === 0) continue;
           
-          // Store baseUrl for model file loading
-          this.baseUrl = data.baseUrl || 'https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data';
+          // Get the first model (prefer Release status, otherwise first available)
+          // releaseStatus can be "Release", "Release Desktop", "Nightly", etc.
+          let model = models.find((m: any) => m.releaseStatus?.includes('Release')) || models[0];
           
-          // Parse the new format: { "models": { "ja-en": [{ files: {...} }] } }
-          const registry: any[] = [];
+          if (!model.files) continue;
           
-          if (!data || typeof data !== 'object' || !data.models) {
-            throw new Error('Invalid registry format: missing "models" property');
-          }
+          const [from, to] = pairKey.split('-');
+          if (!from || !to) continue;
           
-          for (const [pairKey, models] of Object.entries(data.models || {})) {
-            if (!Array.isArray(models) || models.length === 0) continue;
-            
-            // Get the first model (prefer Release status, otherwise first available)
-            // releaseStatus can be "Release", "Release Desktop", "Nightly", etc.
-            let model = models.find((m: any) => m.releaseStatus?.includes('Release')) || models[0];
-            
-            if (!model?.files) continue;
-            
-            const [from, to] = pairKey.split('-');
-            if (!from || !to) continue;
-            
-            // Convert to the format expected by TranslatorBacking
-            const files: any = {
-              model: {
-                name: `${this.baseUrl}/${model.files.model.path}`,
-                expectedSha256Hash: model.files.model.uncompressedHash,
-              },
+          // Convert to the format expected by TranslatorBacking
+          const files: any = {
+            model: {
+              name: `${this.baseUrl}/${model.files.model.path}`,
+              expectedSha256Hash: model.files.model.uncompressedHash,
+            },
+          };
+          
+          // Handle vocab - can be single vocab or separate srcVocab/trgVocab
+          if (model.files.vocab) {
+            files.vocab = {
+              name: `${this.baseUrl}/${model.files.vocab.path}`,
             };
-            
-            // Handle vocab - can be single vocab or separate srcVocab/trgVocab
-            if (model.files.vocab) {
-              files.vocab = {
-                name: `${this.baseUrl}/${model.files.vocab.path}`,
-              };
-            } else if (model.files.srcVocab && model.files.trgVocab) {
-              files.srcvocab = {
-                name: `${this.baseUrl}/${model.files.srcVocab.path}`,
-              };
-              files.trgvocab = {
-                name: `${this.baseUrl}/${model.files.trgVocab.path}`,
-              };
-            }
-            
-            // Handle lexical shortlist (called 'lex' in parent class)
-            if (model.files.lexicalShortlist) {
-              files.lex = {
-                name: `${this.baseUrl}/${model.files.lexicalShortlist.path}`,
-              };
-            }
-            
-            registry.push({
-              from,
-              to,
-              files
-            });
+          } else if (model.files.srcVocab && model.files.trgVocab) {
+            files.srcvocab = {
+              name: `${this.baseUrl}/${model.files.srcVocab.path}`,
+            };
+            files.trgvocab = {
+              name: `${this.baseUrl}/${model.files.trgVocab.path}`,
+            };
           }
           
-          console.log(`[Bergamot] Registry parsed, found ${registry.length} language pairs`);
-          // Cache the registry to avoid refetching
-          this.registryCache = registry;
-          return registry;
-        } catch (error) {
-          console.error('[Bergamot] Error loading model registry:', error);
-          throw error;
+          // Handle lexical shortlist (called 'lex' in parent class)
+          if (model.files.lexicalShortlist) {
+            files.lex = {
+              name: `${this.baseUrl}/${model.files.lexicalShortlist.path}`,
+            };
+          }
+          
+          registry.push({
+            from,
+            to,
+            files
+          });
         }
+        
+        return registry;
       }
 
       // Override fetch to handle CORS, gzip decompression, and integrity checks for Google Cloud Storage
       async fetch(url: string, checksum?: string, extra?: any): Promise<ArrayBuffer> {
-        console.log(`[Bergamot] Starting fetch for: ${url}`);
+        this.checkAborted();
         
-        // Rig up a timeout cancel signal for our fetch
-        const controller = new AbortController();
-        const abort = () => {
-          console.log(`[Bergamot] Aborting fetch for: ${url}`);
-          controller.abort();
-        };
-
+        // Determine file type and weight for progress calculation
+        // Model files are largest (~70% of download), vocab (~20%), lex (~10%)
+        let fileWeight = 0.25; // Default weight per file
+        let isModelFile = false;
+        
+        if (url.includes('/model.') || url.includes('model.')) {
+          fileWeight = this.isPivot ? 0.35 : 0.70; // Model files are largest
+          isModelFile = true;
+        } else if (url.includes('vocab') || url.includes('vocab.')) {
+          fileWeight = this.isPivot ? 0.15 : 0.20;
+        } else if (url.includes('lex') || url.includes('lexical')) {
+          fileWeight = this.isPivot ? 0.05 : 0.10;
+        }
+        
+          // Calculate base progress: 5% (registry) + cumulative progress from previous files
+          // We use 85% for file downloads (5-90%), leaving 10% for initialization
+          // Each file gets equal share of the 85%, but weighted by file size
+          const progressRange = 85; // 5% to 90%
+          const baseProgress = 5 + (this.filesDownloaded / this.totalFilesEstimate) * progressRange;
+          
+          // File-specific progress within its allocation
+          // Model files get more of their share (they're bigger), but all files get equal allocation
+          const fileAllocation = progressRange / this.totalFilesEstimate; // Each file gets this much
+          
+          const fileName = url.substring(url.lastIndexOf('/') + 1);
+          console.log(`[Progress] File ${this.filesDownloaded + 1}/${this.totalFilesEstimate}: ${fileName}`);
+          console.log(`[Progress] Base: ${baseProgress.toFixed(1)}%, Allocation: ${fileAllocation.toFixed(1)}%, Weight: ${(fileWeight * 100).toFixed(0)}%`);
+          
+          // Start of file download - show we're starting this file
+          this.updateProgress(baseProgress, 0, fileAllocation);
+        
+        // Combine abort signals: our loader's signal and any external signal
+        const fetchController = new AbortController();
+        const combinedAbort = () => fetchController.abort();
+        
+        // Use our main controller signal
+        controller.signal.addEventListener('abort', combinedAbort);
+        
+        // Also maintain the original abort signal from extra
+        if (extra?.signal) {
+          extra.signal.addEventListener('abort', combinedAbort);
+        }
+        
+        // Timeout for individual file fetch
         const downloadTimeout = (this as any).downloadTimeout || 120000; // 2 minutes for large files
-        const timeout = downloadTimeout ? setTimeout(abort, downloadTimeout) : null;
+        const timeout = downloadTimeout ? setTimeout(combinedAbort, downloadTimeout) : null;
 
         try {
-          // Also maintain the original abort signal
-          if (extra?.signal) {
-            extra.signal.addEventListener('abort', abort);
-          }
-
           // For Google Cloud Storage, skip integrity check as it may not be supported
           const options: RequestInit = {
             method: 'GET',
             mode: 'cors',
             credentials: 'omit',
-            signal: controller.signal,
+            signal: fetchController.signal,
           };
 
           try {
-            console.log(`[Bergamot] Fetching model file: ${url}`);
-            const fetchStart = Date.now();
-            const response = await fetch(url, options);
-            const fetchTime = Date.now() - fetchStart;
+            console.log(`Fetching Bergamot model file: ${url}`);
             
-            console.log(`[Bergamot] Fetch response received in ${fetchTime}ms: ${response.status} for ${url}`);
+            // Use a ReadableStream to track download progress if available
+            const response = await fetch(url, options);
             
             if (!response.ok) {
               throw new Error(`HTTP ${response.status}: ${response.statusText} for ${url}`);
             }
 
-            // Get the raw data
-            console.log(`[Bergamot] Reading response body for: ${url}`);
-            let arrayBuffer = await response.arrayBuffer();
-            console.log(`[Bergamot] Downloaded ${url}, compressed size: ${arrayBuffer.byteLength} bytes`);
+            // Track download progress using response body stream
+            const contentLength = response.headers.get('content-length');
+            const totalBytes = contentLength ? parseInt(contentLength, 10) : null;
             
-            // Check if the file is gzipped (by URL or by checking magic bytes)
-            const isGzipped = url.endsWith('.gz') || this.isGzipData(arrayBuffer);
+            // Check if response is from cache
+            const cached = response.headers.get('x-cache') === 'HIT' || 
+                          (response as any).fromCache || 
+                          (response as any).wasCached;
             
-            if (isGzipped) {
-              console.log(`[Bergamot] Decompressing gzipped file: ${url}`);
-              const decompressStart = Date.now();
-              arrayBuffer = await this.decompressGzip(arrayBuffer);
-              const decompressTime = Date.now() - decompressStart;
-              console.log(`[Bergamot] Decompressed in ${decompressTime}ms, size: ${arrayBuffer.byteLength} bytes`);
+            let downloadedBytes = 0;
+            const chunks: Uint8Array[] = [];
+            
+            if (cached) {
+              console.log(`[Progress] File ${fileName} served from cache - will be instant`);
+              // Even if cached, show progress through this file
+              // Update quickly: 10% -> 50% -> 100% to show we're processing it
+              this.updateProgress(baseProgress, 10, fileAllocation);
+              await new Promise(resolve => setTimeout(resolve, 100)); // Small delay to show progress
+              this.updateProgress(baseProgress, 50, fileAllocation);
+              
+              // Still need to read the cached response
+              const arrayBuffer = await response.arrayBuffer();
+              console.log(`[Progress] Cached file ${fileName} loaded: ${arrayBuffer.byteLength} bytes`);
+              
+              // Check if the file is gzipped
+              const isGzipped = url.endsWith('.gz') || this.isGzipData(arrayBuffer);
+              
+              if (isGzipped) {
+                this.updateProgress(baseProgress, 80, fileAllocation);
+                console.log(`[Progress] Decompressing cached ${fileName}...`);
+                const decompressed = await this.decompressGzip(arrayBuffer);
+                console.log(`[Progress] Decompressed ${fileName}: ${decompressed.byteLength} bytes`);
+                this.filesDownloaded++;
+                const nextBaseProgress = 5 + (this.filesDownloaded / this.totalFilesEstimate) * progressRange;
+                console.log(`[Progress] Cached file ${this.filesDownloaded}/${this.totalFilesEstimate} complete. Next base: ${nextBaseProgress.toFixed(1)}%`);
+                this.updateProgress(baseProgress, 100, fileAllocation);
+                this.checkAborted();
+                return decompressed;
+              }
+              
+              // Not gzipped, return as-is
+              this.filesDownloaded++;
+              const nextBaseProgress = 5 + (this.filesDownloaded / this.totalFilesEstimate) * progressRange;
+              console.log(`[Progress] Cached file ${this.filesDownloaded}/${this.totalFilesEstimate} complete. Next base: ${nextBaseProgress.toFixed(1)}%`);
+              this.updateProgress(baseProgress, 100, fileAllocation);
+              this.checkAborted();
+              return arrayBuffer;
             }
             
-            console.log(`[Bergamot] Successfully fetched and processed: ${url}`);
-            return arrayBuffer;
+            if (totalBytes && response.body) {
+              // Track progress during download (files not cached)
+              const reader = response.body.getReader();
+              
+              // Start at a small percentage to show download has started
+              this.updateProgress(baseProgress, 5, fileAllocation);
+              
+              while (true) {
+                this.checkAborted();
+                const { done, value } = await reader.read();
+                if (done) break;
+                
+                chunks.push(value);
+                downloadedBytes += value.length;
+                
+                // Update progress during download (0-90% of this file's allocation)
+                // Update more frequently for large files
+                if (totalBytes && this.onProgress) {
+                  const fileProgress = Math.min(90, (downloadedBytes / totalBytes) * 100);
+                  // Update every ~5% or every 50KB, whichever is more frequent
+                  if (fileProgress % 5 < 0.1 || downloadedBytes % (50 * 1024) === 0) {
+                    this.updateProgress(baseProgress, fileProgress, fileAllocation);
+                  }
+                }
+              }
+              
+              // Combine chunks into single array buffer
+              const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+              const arrayBuffer = new ArrayBuffer(totalLength);
+              const view = new Uint8Array(arrayBuffer);
+              let offset = 0;
+              for (const chunk of chunks) {
+                view.set(chunk, offset);
+                offset += chunk.length;
+              }
+              
+              console.log(`Downloaded ${url}, compressed size: ${arrayBuffer.byteLength} bytes`);
+              
+              // Check if the file is gzipped
+              const isGzipped = url.endsWith('.gz') || this.isGzipData(arrayBuffer);
+              
+              if (isGzipped) {
+                // Decompression progress (90-100% of this file's allocation)
+                this.updateProgress(baseProgress, 90, fileAllocation);
+                console.log(`[Progress] Decompressing ${fileName}...`);
+                const decompressed = await this.decompressGzip(arrayBuffer);
+                console.log(`[Progress] Decompressed ${fileName}: ${decompressed.byteLength} bytes`);
+                this.updateProgress(baseProgress, 100, fileAllocation);
+                
+                // Mark file as downloaded
+                this.filesDownloaded++;
+                const nextBaseProgress = 5 + (this.filesDownloaded / this.totalFilesEstimate) * progressRange;
+                console.log(`[Progress] File ${this.filesDownloaded}/${this.totalFilesEstimate} complete. Next base: ${nextBaseProgress.toFixed(1)}%`);
+                this.checkAborted();
+                return decompressed;
+              }
+              
+              // Mark file as downloaded
+              this.filesDownloaded++;
+              const nextBaseProgress = 5 + (this.filesDownloaded / this.totalFilesEstimate) * progressRange;
+              console.log(`[Progress] File ${this.filesDownloaded}/${this.totalFilesEstimate} complete. Next base: ${nextBaseProgress.toFixed(1)}%`);
+              this.updateProgress(baseProgress, 100, fileAllocation);
+              this.checkAborted();
+              return arrayBuffer;
+            } else {
+              // Fallback: no content-length header, can't track progress precisely
+              // But still show progress is happening
+              this.updateProgress(baseProgress, 30, fileAllocation);
+              const arrayBuffer = await response.arrayBuffer();
+              console.log(`[Progress] Downloaded ${fileName}: ${arrayBuffer.byteLength} bytes (no content-length)`);
+              
+              // Check if the file is gzipped
+              const isGzipped = url.endsWith('.gz') || this.isGzipData(arrayBuffer);
+              
+              if (isGzipped) {
+                this.updateProgress(baseProgress, 70, fileAllocation);
+                console.log(`[Progress] Decompressing ${fileName}...`);
+                const decompressed = await this.decompressGzip(arrayBuffer);
+                console.log(`[Progress] Decompressed ${fileName}: ${decompressed.byteLength} bytes`);
+                this.filesDownloaded++;
+                const nextBaseProgress = 5 + (this.filesDownloaded / this.totalFilesEstimate) * progressRange;
+                console.log(`[Progress] File ${this.filesDownloaded}/${this.totalFilesEstimate} complete. Next base: ${nextBaseProgress.toFixed(1)}%`);
+                this.updateProgress(baseProgress, 100, fileAllocation);
+                this.checkAborted();
+                return decompressed;
+              }
+              
+              this.filesDownloaded++;
+              const nextBaseProgress = 5 + (this.filesDownloaded / this.totalFilesEstimate) * progressRange;
+              console.log(`[Progress] File ${this.filesDownloaded}/${this.totalFilesEstimate} complete. Next base: ${nextBaseProgress.toFixed(1)}%`);
+              this.updateProgress(baseProgress, 100, fileAllocation);
+              this.checkAborted();
+              return arrayBuffer;
+            }
           } catch (fetchError: any) {
-            console.error(`[Bergamot] Failed to fetch ${url}:`, fetchError);
-            if (fetchError.name === 'AbortError') {
-              throw new Error(`Fetch timeout after ${downloadTimeout / 1000} seconds for ${url}`);
+            this.checkAborted(); // Check again after error
+            console.error(`Failed to fetch ${url}:`, fetchError);
+            if (fetchError.name === 'AbortError' || controller.signal.aborted) {
+              throw new Error('Model download cancelled by user');
             }
             if (fetchError.message?.includes('CORS') || fetchError.message?.includes('Failed to fetch')) {
               throw new Error(`CORS or network error fetching ${url}. The file may not be accessible from this origin.`);
@@ -563,8 +806,9 @@ async function getBergamotTranslator(
           if (timeout) {
             clearTimeout(timeout);
           }
+          controller.signal.removeEventListener('abort', combinedAbort);
           if (extra?.signal) {
-            extra.signal.removeEventListener('abort', abort);
+            extra.signal.removeEventListener('abort', combinedAbort);
           }
         }
       }
@@ -687,17 +931,9 @@ async function getBergamotTranslator(
 
         // Initialize the worker with options (same as parent class)
         try {
-          console.log('[Bergamot] Initializing worker...');
-          // Add timeout to worker initialization to prevent hanging
-          const initPromise = call('initialize', (this as any).options);
-          const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('Worker initialization timeout after 30 seconds')), 30000);
-          });
-          
-          await Promise.race([initPromise, timeoutPromise]);
-          console.log('[Bergamot] Worker initialized successfully');
+          await call('initialize', (this as any).options);
         } catch (initError: any) {
-          console.error('[Bergamot] Worker initialization failed:', initError);
+          console.error('Worker initialization failed:', initError);
           // If initialization fails, the WASM might not have loaded
           // This could be due to CORS, missing files, or WASM loading issues
           throw new Error(`Failed to initialize Bergamot worker: ${initError.message || 'Unknown error'}. Make sure the worker files (translator-worker.js, bergamot-translator-worker.wasm) are accessible at /bergamot-worker/.`);
@@ -720,16 +956,49 @@ async function getBergamotTranslator(
     }
     
     // Create translator instance with custom backing
-    const backing = new CustomBacking({});
+    const backing = new CustomBacking({}, controller.signal, onProgress, sourceLang, targetLang);
+    
+    // Note: Model files will be downloaded when translate() is first called
+    // The CustomBacking.fetch() method will track progress during downloads
+    // So we don't set progress here - it will be updated during actual file downloads
+    
     const translator = new LatencyOptimisedTranslator({}, backing);
     
     // Store in cache
     bergamotTranslators.set(modelKey, translator);
     
+    // Translator created, but models not yet loaded (will be loaded on first translate call)
+    // Progress will be updated during actual file downloads in CustomBacking.fetch()
+    if (onProgress) {
+      onProgress(5); // Just registry loaded, files will download when translate() is called
+    }
+    
     return translator;
   } catch (error) {
     console.error('Failed to create Bergamot translator:', error);
-    throw new Error(`Failed to create Bergamot translator for ${sourceLang}-${targetLang}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    // Remove from cache if loading failed
+    bergamotTranslators.delete(modelKey);
+    throw error;
+  } finally {
+    // Clean up loader registration
+    activeLoaders.delete(modelKey);
+    abortSignal?.removeEventListener('abort', abortHandler);
+  }
+}
+
+/**
+ * Cancel loading for a specific language pair
+ * @param sourceLang Source language code
+ * @param targetLang Target language code
+ */
+export function cancelBergamotModelLoad(sourceLang: string, targetLang: string): void {
+  const modelKey = `${sourceLang}-${targetLang}`;
+  const loader = activeLoaders.get(modelKey);
+  if (loader) {
+    loader.abortController.abort();
+    activeLoaders.delete(modelKey);
+    // Also remove from translator cache if it was partially created
+    bergamotTranslators.delete(modelKey);
   }
 }
 
@@ -737,39 +1006,94 @@ async function getBergamotTranslator(
  * Load Bergamot model for a language pair
  * This pre-loads the model by attempting a dummy translation
  * The model files are downloaded and cached by the browser automatically
+ * @param sourceLang Source language code
+ * @param targetLang Target language code
+ * @param abortSignal Optional AbortSignal to cancel the operation
+ * @param onProgress Optional progress callback (0-100)
  */
 export async function loadBergamotModel(
   sourceLang: string,
   targetLang: string,
+  abortSignal?: AbortSignal,
   onProgress?: (progress: number) => void
 ): Promise<any> {
   const modelKey = `${sourceLang}-${targetLang}`;
   
+  // Check if cancelled before starting
+  if (abortSignal?.aborted) {
+    throw new Error('Operation aborted');
+  }
+  
   // If already loaded, return existing translator
   if (bergamotTranslators.has(modelKey)) {
+    if (onProgress) {
+      onProgress(100);
+    }
     return bergamotTranslators.get(modelKey);
   }
 
   try {
-    const translator = await getBergamotTranslator(sourceLang, targetLang, onProgress);
+    const translator = await getBergamotTranslator(sourceLang, targetLang, abortSignal, onProgress);
     
-    // Trigger model download by attempting a dummy translation
-    // This will download the model files if not already cached
-    // The package handles caching automatically via the browser's cache
-    try {
-      const result = await translator.translate({
-        from: sourceLang,
-        to: targetLang,
-        text: 'test',
-        html: false,
-      });
-      
-      // If translation succeeds, model is loaded
-      // Store a flag that model is ready
-      console.log('Bergamot model loaded successfully for', modelKey);
+    // Check if cancelled after translator creation
+    if (abortSignal?.aborted) {
+      throw new Error('Operation aborted');
+    }
+    
+      // Trigger model download by attempting a dummy translation
+      // This will download the model files if not already cached
+      // The CustomBacking.fetch() method will track progress during downloads (5-90%)
+      // The package handles caching automatically via the browser's cache
+      try {
+        // Track progress before translate call - should be at 5% (registry loaded)
+        let progressBeforeTranslate = 0;
+        if (onProgress) {
+          // Get current progress if possible (we don't have direct access, so estimate)
+          progressBeforeTranslate = 5; // Registry loaded
+        }
+        
+        console.log(`[Progress] Starting translate() call - files should download now. Current progress: ~${progressBeforeTranslate}%`);
+        
+        const result = await translator.translate({
+          from: sourceLang,
+          to: targetLang,
+          text: 'test',
+          html: false,
+        });
+        
+        console.log('[Progress] Translate() completed. All required files have been loaded.');
+        
+        // Translation test completed - models are loaded
+        // If files were cached, fetch() completed very quickly and progress might still be low
+        // We need to ensure progress smoothly completes to show all files are loaded
+        if (onProgress) {
+          // Wait a bit to ensure any final progress updates from fetch() are processed
+          await new Promise(resolve => setTimeout(resolve, 300));
+          
+          // Ensure progress completes smoothly
+          // If files were cached and progress is still low (e.g., 25%), animate it to 90%
+          // This shows the user that all files were loaded (even if from cache)
+          // We'll update in steps to show progress is happening
+          onProgress(90); // All files loaded (downloaded or cached)
+          
+          // Small delays to show progress updates
+          await new Promise(resolve => setTimeout(resolve, 200));
+          onProgress(95); // Model initialized and translation test passed
+          
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+        
+        console.log('Bergamot model loaded successfully for', modelKey);
+        
+        if (onProgress) {
+          onProgress(100); // Complete
+        }
     } catch (e) {
       // If translation fails, the model might not be available for this language pair
       console.error('Failed to load Bergamot model - translation test failed:', e);
+      if (e instanceof Error && e.message.includes('aborted')) {
+        throw e;
+      }
       throw new Error(`Bergamot model for ${sourceLang}-${targetLang} is not available or failed to load: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
     
@@ -778,20 +1102,31 @@ export async function loadBergamotModel(
     console.error('Failed to load Bergamot model:', error);
     // Remove from cache if loading failed
     bergamotTranslators.delete(modelKey);
-    throw new Error(`Failed to load Bergamot model for ${sourceLang}-${targetLang}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+
+    throw error;
   }
 }
 
 /**
  * Translate text using Bergamot Translator
+ * @param text Text to translate
+ * @param sourceLanguage Source language code
+ * @param targetLanguage Target language code
+ * @param abortSignal Optional AbortSignal to cancel the operation
  */
 export async function translateWithBergamot(
   text: string,
   sourceLanguage: string = 'ja',
-  targetLanguage: string = 'en'
+  targetLanguage: string = 'en',
+  abortSignal?: AbortSignal
 ): Promise<string | null> {
   try {
-    const translator = await getBergamotTranslator(sourceLanguage, targetLanguage);
+    const translator = await getBergamotTranslator(sourceLanguage, targetLanguage, abortSignal);
+    
+    // Check if cancelled
+    if (abortSignal?.aborted) {
+      throw new Error('Translation aborted');
+    }
     
     // Translate using the translator
     const result = await translator.translate({
@@ -804,6 +1139,9 @@ export async function translateWithBergamot(
     return result?.target?.text || null;
   } catch (error) {
     console.error('Bergamot translation error:', error);
+    if (error instanceof Error && error.message.includes('aborted')) {
+      throw error;
+    }
     throw new Error(`Bergamot translation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }

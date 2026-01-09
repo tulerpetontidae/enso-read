@@ -43,7 +43,11 @@ export default function SettingsPage() {
     const [isLoadingBergamotModel, setIsLoadingBergamotModel] = useState(false);
     const [bergamotModelLoaded, setBergamotModelLoaded] = useState(false);
     const [translationPairInfo, setTranslationPairInfo] = useState<TranslationPairInfo | null>(null);
+    const [modelLoadProgress, setModelLoadProgress] = useState<number>(0);
     const [googleAvailable, setGoogleAvailable] = useState(false);
+    
+    // Store abort controller for model loading (for cancellation)
+    const modelLoadAbortControllerRef = useRef<AbortController | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [saveMessage, setSaveMessage] = useState<string | null>(null);
     
@@ -187,9 +191,27 @@ export default function SettingsPage() {
         } else {
             setTranslationPairInfo(null);
         }
+        
+        // Cancel any in-flight model loading when language pair changes
+        if (modelLoadAbortControllerRef.current) {
+            modelLoadAbortControllerRef.current.abort();
+            modelLoadAbortControllerRef.current = null;
+            setIsLoadingBergamotModel(false);
+            setModelLoadProgress(0);
+        }
     }, [selectedEngine, bergamotSourceLanguage, bergamotTargetLanguage]);
     
-    // Handle Bergamot model loading
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            if (modelLoadAbortControllerRef.current) {
+                modelLoadAbortControllerRef.current.abort();
+                modelLoadAbortControllerRef.current = null;
+            }
+        };
+    }, []);
+    
+    // Handle Bergamot model loading (non-blocking, cancellable)
     const handleLoadBergamotModel = async () => {
         if (!bergamotSourceLanguage || !bergamotTargetLanguage) {
             setSaveMessage('Please select both source and target languages');
@@ -197,35 +219,94 @@ export default function SettingsPage() {
             return;
         }
         
+        // Cancel any existing load
+        if (modelLoadAbortControllerRef.current) {
+            modelLoadAbortControllerRef.current.abort();
+        }
+        
+        // Create new abort controller
+        const abortController = new AbortController();
+        modelLoadAbortControllerRef.current = abortController;
+        
         setIsLoadingBergamotModel(true);
+        setModelLoadProgress(0);
         setSaveMessage(null);
         
-        try {
-            // Import and load the model
-            const { translateWithBergamot } = await import('@/lib/translation');
-            
-            // Provide feedback for pivot translations
-            const isPivot = translationPairInfo?.isPivot;
-            if (isPivot) {
-                setSaveMessage(`Downloading models: ${bergamotSourceLanguage} → en → ${bergamotTargetLanguage}...`);
-            } else {
-                setSaveMessage(`Downloading model: ${bergamotSourceLanguage} → ${bergamotTargetLanguage}...`);
+        // Start loading in background (non-blocking)
+        (async () => {
+            try {
+                // Import functions
+                const { loadBergamotModel } = await import('@/lib/translation');
+                
+                // Provide feedback for pivot translations
+                const isPivot = translationPairInfo?.isPivot;
+                if (isPivot) {
+                    setSaveMessage(`Downloading models: ${bergamotSourceLanguage} → en → ${bergamotTargetLanguage}...`);
+                } else {
+                    setSaveMessage(`Downloading model: ${bergamotSourceLanguage} → ${bergamotTargetLanguage}...`);
+                }
+                
+                // Load model with progress callback and abort signal
+                await loadBergamotModel(
+                    bergamotSourceLanguage,
+                    bergamotTargetLanguage,
+                    abortController.signal,
+                    (progress) => {
+                        // Update progress (0-100)
+                        setModelLoadProgress(progress);
+                        // Update message with progress
+                        if (progress < 100) {
+                            const isPivot = translationPairInfo?.isPivot;
+                            const modelText = isPivot ? 'models' : 'model';
+                            setSaveMessage(`Downloading ${modelText}... ${progress}%`);
+                        }
+                    }
+                );
+                
+                // Check if cancelled
+                if (abortController.signal.aborted) {
+                    setSaveMessage('Model loading cancelled');
+                    setTimeout(() => setSaveMessage(null), 3000);
+                    return;
+                }
+                
+                setBergamotModelLoaded(true);
+                const modelText = isPivot ? '2 models loaded successfully!' : 'Model loaded successfully!';
+                setSaveMessage(modelText);
+                setTimeout(() => setSaveMessage(null), 3000);
+            } catch (error) {
+                // Don't show error if it was cancelled
+                if (abortController.signal.aborted) {
+                    setSaveMessage('Model loading cancelled');
+                    setTimeout(() => setSaveMessage(null), 3000);
+                    return;
+                }
+                
+                console.error('Failed to load Bergamot model:', error);
+                const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+                setSaveMessage(`Failed to load model: ${errorMessage}`);
+                setTimeout(() => setSaveMessage(null), 5000);
+                setBergamotModelLoaded(false);
+            } finally {
+                setIsLoadingBergamotModel(false);
+                setModelLoadProgress(0);
+                // Clear abort controller reference if it's still our current one
+                if (modelLoadAbortControllerRef.current === abortController) {
+                    modelLoadAbortControllerRef.current = null;
+                }
             }
-            
-            // Trigger model loading by attempting a dummy translation
-            // This will load and cache the model(s)
-            await translateWithBergamot('test', bergamotSourceLanguage, bergamotTargetLanguage);
-            setBergamotModelLoaded(true);
-            const modelText = isPivot ? '2 models loaded successfully!' : 'Model loaded successfully!';
-            setSaveMessage(modelText);
-            setTimeout(() => setSaveMessage(null), 3000);
-        } catch (error) {
-            console.error('Failed to load Bergamot model:', error);
-            setSaveMessage(`Failed to load model: ${error instanceof Error ? error.message : 'Unknown error'}`);
-            setTimeout(() => setSaveMessage(null), 5000);
-            setBergamotModelLoaded(false);
-        } finally {
+        })();
+    };
+    
+    // Handle cancellation
+    const handleCancelModelLoad = () => {
+        if (modelLoadAbortControllerRef.current) {
+            modelLoadAbortControllerRef.current.abort();
+            modelLoadAbortControllerRef.current = null;
             setIsLoadingBergamotModel(false);
+            setModelLoadProgress(0);
+            setSaveMessage('Model loading cancelled');
+            setTimeout(() => setSaveMessage(null), 3000);
         }
     };
 
@@ -781,38 +862,85 @@ export default function SettingsPage() {
                                     </div>
                                 )}
                                 
-                                <div className="flex items-center gap-3">
-                                    <button
-                                        onClick={handleLoadBergamotModel}
-                                        disabled={isLoadingBergamotModel || !bergamotSourceLanguage || !bergamotTargetLanguage || !translationPairInfo?.available}
-                                        className="px-4 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                                        style={{
-                                            backgroundColor: bergamotModelLoaded ? 'var(--zen-translation-btn-active-bg, rgba(16, 185, 129, 0.2))' : 'var(--zen-btn-bg)',
-                                            borderWidth: '1px',
-                                            borderStyle: 'solid',
-                                            borderColor: 'var(--zen-btn-border)',
-                                            color: 'var(--zen-text)',
-                                        }}
-                                    >
-                                        {isLoadingBergamotModel ? (
-                                            <>
-                                                <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                                                <span>Loading {translationPairInfo?.modelCount === 2 ? '2 Models' : 'Model'}...</span>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <span>Load {translationPairInfo?.modelCount === 2 ? '2 Models' : 'Model'}</span>
-                                                {bergamotModelLoaded && (
-                                                    <span className="text-xs">✓ Loaded</span>
-                                                )}
-                                            </>
-                                        )}
-                                    </button>
-                                    {bergamotModelLoaded && (
-                                        <span className="text-xs" style={{ color: 'var(--zen-text-muted)' }}>
-                                            {translationPairInfo?.modelCount === 2 ? 'Models' : 'Model'} ready for translation
-                                        </span>
+                                <div className="space-y-2">
+                                    {/* Progress bar during loading */}
+                                    {isLoadingBergamotModel && modelLoadProgress > 0 && (
+                                        <div className="w-full">
+                                            <div className="flex items-center justify-between text-xs mb-1" style={{ color: 'var(--zen-text-muted)' }}>
+                                                <span>Downloading...</span>
+                                                <span>{modelLoadProgress}%</span>
+                                            </div>
+                                            <div 
+                                                className="h-2 rounded-full overflow-hidden"
+                                                style={{ 
+                                                    backgroundColor: 'var(--zen-note-bg)',
+                                                    borderWidth: '1px',
+                                                    borderStyle: 'solid',
+                                                    borderColor: 'var(--zen-btn-border)',
+                                                }}
+                                            >
+                                                <div 
+                                                    className="h-full transition-all duration-300 rounded-full"
+                                                    style={{ 
+                                                        width: `${modelLoadProgress}%`,
+                                                        backgroundColor: 'var(--zen-accent, #ec4899)',
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
                                     )}
+                                    
+                                    <div className="flex items-center gap-3 flex-wrap">
+                                        <button
+                                            onClick={handleLoadBergamotModel}
+                                            disabled={isLoadingBergamotModel || !bergamotSourceLanguage || !bergamotTargetLanguage || !translationPairInfo?.available}
+                                            className="px-4 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                            style={{
+                                                backgroundColor: bergamotModelLoaded ? 'var(--zen-translation-btn-active-bg, rgba(16, 185, 129, 0.2))' : 'var(--zen-btn-bg)',
+                                                borderWidth: '1px',
+                                                borderStyle: 'solid',
+                                                borderColor: 'var(--zen-btn-border)',
+                                                color: 'var(--zen-text)',
+                                            }}
+                                        >
+                                            {isLoadingBergamotModel ? (
+                                                <>
+                                                    <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                                                    <span>Loading {translationPairInfo?.modelCount === 2 ? '2 Models' : 'Model'}...</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <span>Load {translationPairInfo?.modelCount === 2 ? '2 Models' : 'Model'}</span>
+                                                    {bergamotModelLoaded && (
+                                                        <span className="text-xs">✓ Loaded</span>
+                                                    )}
+                                                </>
+                                            )}
+                                        </button>
+                                        
+                                        {/* Cancel button (only shown during loading) */}
+                                        {isLoadingBergamotModel && (
+                                            <button
+                                                onClick={handleCancelModelLoad}
+                                                className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2"
+                                                style={{
+                                                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                                                    borderWidth: '1px',
+                                                    borderStyle: 'solid',
+                                                    borderColor: 'rgba(239, 68, 68, 0.3)',
+                                                    color: 'var(--zen-text)',
+                                                }}
+                                            >
+                                                Cancel
+                                            </button>
+                                        )}
+                                        
+                                        {bergamotModelLoaded && !isLoadingBergamotModel && (
+                                            <span className="text-xs" style={{ color: 'var(--zen-text-muted)' }}>
+                                                {translationPairInfo?.modelCount === 2 ? 'Models' : 'Model'} ready for translation
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         )}
