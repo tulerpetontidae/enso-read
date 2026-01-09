@@ -199,7 +199,7 @@ export default function BookmarkSelector({
       <>
         {/* Backdrop */}
         <div
-          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm transition-opacity"
+          className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm transition-opacity"
           onClick={onClose}
           style={{
             animation: 'fadeIn 0.2s ease-out',
@@ -209,7 +209,7 @@ export default function BookmarkSelector({
         {/* Modal Content */}
         <div
           ref={selectorRef}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               onClose();

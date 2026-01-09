@@ -89,6 +89,9 @@ export default function MobileBottomPanel({
   const handleRef = useRef<HTMLDivElement>(null);
   const isDraggingRef = useRef(false);
   const wasOpenRef = useRef(false);
+  const rafRef = useRef<number | null>(null);
+  const lastHeightRef = useRef<number>(0);
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 800;
   const partialHeight = viewportHeight * 0.33; // 33% of viewport
@@ -101,6 +104,15 @@ export default function MobileBottomPanel({
       setCurrentHeight(0);
       setPanelState('collapsed');
       wasOpenRef.current = false;
+      // Cleanup on close
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+        debounceTimeoutRef.current = null;
+      }
       return;
     }
 
@@ -126,51 +138,108 @@ export default function MobileBottomPanel({
     }
   }, [panelState, isOpen, partialHeight, fullHeight, collapsedHeight]);
 
-  // Determine panel state based on height (for UI purposes like backdrop)
-  const updatePanelState = useCallback((height: number) => {
-    const threshold1 = collapsedHeight + 50; // Small buffer for collapsed
-    const threshold2 = (partialHeight + fullHeight) / 2;
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+      }
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+    };
+  }, []);
 
-    if (height < threshold1) {
-      setPanelState('collapsed');
-    } else if (height < threshold2) {
-      setPanelState('partial');
-    } else {
-      setPanelState('full');
+  // Determine panel state based on height (for UI purposes like backdrop)
+  // Debounced to avoid excessive state updates during drag
+  const updatePanelState = useCallback((height: number) => {
+    // Clear existing timeout
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
     }
-    // Note: We don't change currentHeight here - it stays at the dragged height
+
+    // Debounce state update (only affects backdrop visibility, not critical)
+    debounceTimeoutRef.current = setTimeout(() => {
+      const threshold1 = collapsedHeight + 50; // Small buffer for collapsed
+      const threshold2 = (partialHeight + fullHeight) / 2;
+
+      if (height < threshold1) {
+        setPanelState('collapsed');
+      } else if (height < threshold2) {
+        setPanelState('partial');
+      } else {
+        setPanelState('full');
+      }
+    }, 100);
   }, [collapsedHeight, partialHeight, fullHeight]);
 
   // Handle drag start (touch or mouse)
   const handleDragStart = useCallback((clientY: number) => {
     if (!panelRef.current) return;
+    
+    // Cancel any pending RAF
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    
     isDraggingRef.current = true;
     setIsDragging(true);
     setDragStartY(clientY);
     setDragStartHeight(panelRef.current.offsetHeight);
+    lastHeightRef.current = panelRef.current.offsetHeight;
     document.body.style.userSelect = 'none'; // Prevent text selection during drag
   }, []);
 
-  // Handle drag move
+  // Handle drag move with RAF throttling and direct DOM manipulation
   const handleDragMove = useCallback((clientY: number) => {
     if (!isDraggingRef.current || dragStartY === null || !panelRef.current) return;
 
     const deltaY = dragStartY - clientY; // Negative when dragging up
     const newHeight = Math.max(collapsedHeight, Math.min(fullHeight, dragStartHeight + deltaY));
     
-    setCurrentHeight(newHeight);
-    updatePanelState(newHeight);
+    // Apply height directly to DOM for immediate visual feedback (no React re-render)
+    if (panelRef.current) {
+      panelRef.current.style.height = `${newHeight}px`;
+    }
+    
+    // Store height for RAF update
+    lastHeightRef.current = newHeight;
+    
+    // Cancel previous RAF if exists
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+    }
+    
+    // Schedule React state update via RAF (throttled to 60fps)
+    rafRef.current = requestAnimationFrame(() => {
+      setCurrentHeight(lastHeightRef.current);
+      // Debounced state update for backdrop (not critical during drag)
+      updatePanelState(lastHeightRef.current);
+      rafRef.current = null;
+    });
   }, [dragStartY, dragStartHeight, collapsedHeight, fullHeight, updatePanelState]);
 
   // Handle drag end
   const handleDragEnd = useCallback(() => {
     if (!isDraggingRef.current) return;
     
+    // Cancel any pending RAF
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    
     isDraggingRef.current = false;
     setIsDragging(false);
-    const finalHeight = currentHeight; // Use current height state
+    
+    // Use the last height from ref (more accurate than state during drag)
+    const finalHeight = lastHeightRef.current;
     setDragStartY(null);
     document.body.style.userSelect = '';
+
+    // Sync React state with final height
+    setCurrentHeight(finalHeight);
 
     // Close if below one line of text height (< 150px)
     if (finalHeight < 150) {
@@ -190,7 +259,7 @@ export default function MobileBottomPanel({
     // Keep the current height (allow arbitrary sizes below 2/3)
     // Only update state for UI purposes (backdrop, etc.)
     updatePanelState(finalHeight);
-  }, [currentHeight, collapsedHeight, viewportHeight, fullHeight, onClose, updatePanelState]);
+  }, [viewportHeight, fullHeight, onClose, updatePanelState]);
 
   // Touch event handlers - use native event listeners to avoid passive event issues
   useEffect(() => {
@@ -308,7 +377,8 @@ export default function MobileBottomPanel({
           height: `${currentHeight}px`,
           maxHeight: '100vh',
           transform: isOpen ? 'translateY(0)' : 'translateY(100%)',
-          transition: isDragging ? 'none' : 'height 0.3s ease-out, transform 0.3s ease-out',
+          transition: isDragging ? 'none' : 'height 0.2s ease-out, transform 0.2s ease-out',
+          willChange: isDragging ? 'height' : 'auto',
         }}
       >
         <div
