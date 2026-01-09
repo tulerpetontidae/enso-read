@@ -10,6 +10,9 @@ import Link from 'next/link';
 import parse, { domToReact, HTMLReactParserOptions, Element, DOMNode } from 'html-react-parser';
 import TranslatableParagraph from '@/components/TranslatableParagraph';
 import SettingsModal, { FONT_OPTIONS, WIDTH_OPTIONS, FONT_SIZE_OPTIONS } from '@/components/SettingsModal';
+import MobileBottomPanel, { type BottomPanelTab } from '@/components/MobileBottomPanel';
+import ChatAssistant from '@/components/ChatAssistant';
+import { useIsMobile } from '@/hooks/useIsMobile';
 
 function debounce(func: Function, wait: number) {
     let timeout: NodeJS.Timeout;
@@ -55,6 +58,105 @@ function getTextContent(node: React.ReactNode): string {
     return '';
 }
 
+// Note editor component for mobile bottom panel with local state management
+function NoteEditorMobile({ 
+    initialContent, 
+    onUpdate 
+}: { 
+    initialContent: string; 
+    onUpdate: (content: string) => void;
+}) {
+    const [localContent, setLocalContent] = useState(initialContent);
+    const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const isUserTypingRef = useRef(false);
+    const lastSavedContentRef = useRef(initialContent);
+    const isInitialMountRef = useRef(true);
+
+    // Initialize on mount
+    useEffect(() => {
+        isInitialMountRef.current = false;
+        lastSavedContentRef.current = initialContent;
+    }, []);
+
+    // Only update local content when initialContent changes AND:
+    // 1. User is not typing
+    // 2. The content is different from what we last saved (external change)
+    // 3. It's not the initial mount
+    useEffect(() => {
+        if (isInitialMountRef.current) {
+            return;
+        }
+        
+        // If user is typing, don't overwrite
+        if (isUserTypingRef.current) {
+            return;
+        }
+        
+        // If the new content matches what we last saved, it's our own save - ignore
+        if (initialContent === lastSavedContentRef.current) {
+            return;
+        }
+        
+        // This is an external change (e.g., from another device/tab) - update local state
+        setLocalContent(initialContent);
+        lastSavedContentRef.current = initialContent;
+    }, [initialContent]);
+
+    const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        const newContent = e.target.value;
+        isUserTypingRef.current = true;
+        setLocalContent(newContent);
+        
+        // Debounce save to DB
+        if (saveTimeoutRef.current) {
+            clearTimeout(saveTimeoutRef.current);
+        }
+        saveTimeoutRef.current = setTimeout(() => {
+            isUserTypingRef.current = false;
+            lastSavedContentRef.current = newContent;
+            onUpdate(newContent);
+        }, 500); // Save after 500ms of no typing
+    };
+
+    const handleBlur = () => {
+        // Save immediately on blur
+        isUserTypingRef.current = false;
+        if (saveTimeoutRef.current) {
+            clearTimeout(saveTimeoutRef.current);
+        }
+        lastSavedContentRef.current = localContent;
+        onUpdate(localContent);
+    };
+
+    useEffect(() => {
+        return () => {
+            if (saveTimeoutRef.current) {
+                clearTimeout(saveTimeoutRef.current);
+            }
+        };
+    }, []);
+
+    return (
+        <div className="h-full flex flex-col p-4">
+            <textarea
+                value={localContent}
+                onChange={handleChange}
+                onBlur={handleBlur}
+                placeholder="Write your note..."
+                className="w-full flex-1 p-3 text-sm resize-none focus:outline-none rounded-lg"
+                style={{
+                    fontFamily: 'system-ui, sans-serif',
+                    backgroundColor: 'var(--zen-note-bg, white)',
+                    color: 'var(--zen-text, #44403c)',
+                    borderWidth: '1px',
+                    borderStyle: 'solid',
+                    borderColor: 'var(--zen-note-border, #fcd34d)',
+                }}
+            />
+        </div>
+    );
+}
+
 export default function ReaderPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -75,6 +177,15 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
     const [zenMode, setZenMode] = useState(false);
     const [notesVersion, setNotesVersion] = useState(0);
     const [bookmarksVersion, setBookmarksVersion] = useState(0);
+    
+    // Mobile state
+    const isMobile = useIsMobile();
+    const [bottomPanelOpen, setBottomPanelOpen] = useState(false);
+    const [bottomPanelTab, setBottomPanelTab] = useState<BottomPanelTab>('translation');
+    const [activeParagraphHash, setActiveParagraphHash] = useState<string | null>(null);
+    const [activeNoteContent, setActiveNoteContent] = useState<{ content: string; paragraphHash: string; onUpdate: (content: string) => void } | null>(null);
+    const [activeChatParagraphHash, setActiveChatParagraphHash] = useState<string | null>(null);
+    const [activeTranslationParagraphHash, setActiveTranslationParagraphHash] = useState<string | null>(null);
     
     // Batch-loaded data lookup maps (Phase 1: Batch Database Queries)
     const [translationMap, setTranslationMap] = useState<Map<string, { translatedText: string; originalText: string }>>(new Map());
@@ -322,6 +433,102 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
                                         newMap.delete(threadId);
                                     }
                                     setChatMap(newMap);
+                                }}
+                                activeParagraphHash={activeParagraphHash}
+                                onParagraphActivate={(hash) => {
+                                    setActiveParagraphHash(hash);
+                                }}
+                                onOpenBottomPanel={(tab, hash) => {
+                                    setBottomPanelTab(tab);
+                                    setActiveParagraphHash(hash);
+                                    setBottomPanelOpen(true);
+                                    
+                                    if (tab === 'translation') {
+                                        setActiveTranslationParagraphHash(hash);
+                                        // If translation doesn't exist, trigger it
+                                        const cachedTranslation = translationMap.get(hash);
+                                        if (!cachedTranslation) {
+                                            // Translation will be triggered when user opens the tab
+                                        }
+                                    } else if (tab === 'chat') {
+                                        setActiveChatParagraphHash(hash);
+                                    } else if (tab === 'note') {
+                                        const note = noteMap.get(hash);
+                                        const noteId = `${id}-${hash}`;
+                                        if (note) {
+                                            setActiveNoteContent({
+                                                content: note.content,
+                                                paragraphHash: hash,
+                                                onUpdate: async (content: string) => {
+                                                    try {
+                                                        if (content.trim()) {
+                                                            await db.notes.put({
+                                                                id: noteId,
+                                                                bookId: id,
+                                                                paragraphHash: hash,
+                                                                content,
+                                                                height: note.height || 80,
+                                                                createdAt: note.height ? Date.now() : Date.now(),
+                                                                updatedAt: Date.now(),
+                                                            });
+                                                            // Update note content
+                                                            const newMap = new Map(noteMap);
+                                                            newMap.set(hash, { ...note, content });
+                                                            setNoteMap(newMap);
+                                                            setNotesVersion(prev => prev + 1);
+                                                        } else {
+                                                            await db.notes.delete(noteId);
+                                                            // Update note content
+                                                            const newMap = new Map(noteMap);
+                                                            newMap.delete(hash);
+                                                            setNoteMap(newMap);
+                                                            setNotesVersion(prev => prev + 1);
+                                                        }
+                                                        // Don't update activeNoteContent here - let NoteEditor handle its own state
+                                                        // This prevents overwriting local state while user is typing
+                                                    } catch (e) {
+                                                        console.error('Failed to save note:', e);
+                                                    }
+                                                }
+                                            });
+                                        } else {
+                                            setActiveNoteContent({
+                                                content: '',
+                                                paragraphHash: hash,
+                                                onUpdate: async (content: string) => {
+                                                    try {
+                                                        if (content.trim()) {
+                                                            await db.notes.put({
+                                                                id: noteId,
+                                                                bookId: id,
+                                                                paragraphHash: hash,
+                                                                content,
+                                                                height: 80,
+                                                                createdAt: Date.now(),
+                                                                updatedAt: Date.now(),
+                                                            });
+                                                            // Update note content
+                                                            const newMap = new Map(noteMap);
+                                                            newMap.set(hash, { content, height: 80 });
+                                                            setNoteMap(newMap);
+                                                            setNotesVersion(prev => prev + 1);
+                                                        } else {
+                                                            await db.notes.delete(noteId);
+                                                            // Update note content
+                                                            const newMap = new Map(noteMap);
+                                                            newMap.delete(hash);
+                                                            setNoteMap(newMap);
+                                                            setNotesVersion(prev => prev + 1);
+                                                        }
+                                                        // Don't update activeNoteContent here - let NoteEditor handle its own state
+                                                        // This prevents overwriting local state while user is typing
+                                                    } catch (e) {
+                                                        console.error('Failed to save note:', e);
+                                                    }
+                                                }
+                                            });
+                                        }
+                                    }
                                 }}
                             >
                                 {getParagraphWrapper(domNode, children)}
@@ -719,60 +926,63 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
 
                 {/* Right side - all buttons */}
                 <div className="flex items-center gap-2">
-                    {/* Show all translations button (hidden in zen mode) */}
-                    {!zenMode && (
-                        <button
-                            onClick={() => setShowAllTranslations(!showAllTranslations)}
-                            className="p-1.5 transition-colors rounded"
-                            style={{ 
-                                color: showAllTranslations ? 'var(--zen-text, #1c1917)' : 'var(--zen-text-muted, #78716c)',
-                                backgroundColor: showAllTranslations ? 'var(--zen-accent-bg, rgba(255,255,255,0.5))' : 'transparent'
-                            }}
-                            title="Show all translations"
-                        >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M5 8l6 6" />
-                                <path d="M4 14l6-6 2-3" />
-                                <path d="M2 5h12" />
-                                <path d="M7 2h1" />
-                                <path d="M22 22l-5-10-5 10" />
-                                <path d="M14 18h6" />
-                            </svg>
-                        </button>
-                    )}
-                    {/* Show all comments button (hidden in zen mode) */}
-                    {!zenMode && (
-                        <button
-                            onClick={() => setShowAllComments(!showAllComments)}
-                            className="p-1.5 transition-colors rounded"
-                            style={{ 
-                                color: showAllComments ? 'var(--zen-text, #1c1917)' : 'var(--zen-text-muted, #78716c)',
-                                backgroundColor: showAllComments ? 'var(--zen-accent-bg, rgba(255,255,255,0.5))' : 'transparent'
-                            }}
-                            title="Show all comments"
-                        >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M12 20h9" />
-                                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-                            </svg>
-                        </button>
-                    )}
-                    {/* Show all chats button (hidden in zen mode) */}
-                    {!zenMode && (
-                        <button
-                            onClick={() => setShowAllChats(!showAllChats)}
-                            className="p-1.5 transition-colors rounded"
-                            style={{ 
-                                color: showAllChats ? 'var(--zen-text, #1c1917)' : 'var(--zen-text-muted, #78716c)',
-                                backgroundColor: showAllChats ? 'var(--zen-accent-bg, rgba(255,255,255,0.5))' : 'transparent'
-                            }}
-                            title="Show all AI chats"
-                        >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                            </svg>
-                        </button>
-                    )}
+                    {/* Show all buttons - hidden on mobile */}
+                    <div className="hidden md:flex items-center gap-2">
+                        {/* Show all translations button (hidden in zen mode) */}
+                        {!zenMode && (
+                            <button
+                                onClick={() => setShowAllTranslations(!showAllTranslations)}
+                                className="p-1.5 transition-colors rounded"
+                                style={{ 
+                                    color: showAllTranslations ? 'var(--zen-text, #1c1917)' : 'var(--zen-text-muted, #78716c)',
+                                    backgroundColor: showAllTranslations ? 'var(--zen-accent-bg, rgba(255,255,255,0.5))' : 'transparent'
+                                }}
+                                title="Show all translations"
+                            >
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M5 8l6 6" />
+                                    <path d="M4 14l6-6 2-3" />
+                                    <path d="M2 5h12" />
+                                    <path d="M7 2h1" />
+                                    <path d="M22 22l-5-10-5 10" />
+                                    <path d="M14 18h6" />
+                                </svg>
+                            </button>
+                        )}
+                        {/* Show all comments button (hidden in zen mode) */}
+                        {!zenMode && (
+                            <button
+                                onClick={() => setShowAllComments(!showAllComments)}
+                                className="p-1.5 transition-colors rounded"
+                                style={{ 
+                                    color: showAllComments ? 'var(--zen-text, #1c1917)' : 'var(--zen-text-muted, #78716c)',
+                                    backgroundColor: showAllComments ? 'var(--zen-accent-bg, rgba(255,255,255,0.5))' : 'transparent'
+                                }}
+                                title="Show all comments"
+                            >
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M12 20h9" />
+                                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                                </svg>
+                            </button>
+                        )}
+                        {/* Show all chats button (hidden in zen mode) */}
+                        {!zenMode && (
+                            <button
+                                onClick={() => setShowAllChats(!showAllChats)}
+                                className="p-1.5 transition-colors rounded"
+                                style={{ 
+                                    color: showAllChats ? 'var(--zen-text, #1c1917)' : 'var(--zen-text-muted, #78716c)',
+                                    backgroundColor: showAllChats ? 'var(--zen-accent-bg, rgba(255,255,255,0.5))' : 'transparent'
+                                }}
+                                title="Show all AI chats"
+                            >
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                                </svg>
+                            </button>
+                        )}
+                    </div>
                     {/* Show bookmark indicators button (hidden in zen mode) */}
                     {!zenMode && (
                         <button
@@ -882,8 +1092,12 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
                     </div>
                 )}
                 <div 
-                    className="mx-auto py-8 pl-16 transition-all duration-300"
-                    style={{ maxWidth: currentWidth.maxWidth }}
+                    className="mx-auto py-8 transition-all duration-300"
+                    style={{ 
+                        maxWidth: isMobile ? '100%' : currentWidth.maxWidth,
+                        paddingLeft: isMobile ? '0' : '64px',
+                        paddingRight: isMobile ? '0' : '0'
+                    }}
                 >
                     {sections.map((section) => (
                         <div
@@ -894,8 +1108,8 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
                                 fontSize: currentFontSize.size,
                                 lineHeight: '1.9',
                                 color: 'var(--zen-text, #1a1a1a)',
-                                padding: '10px 40px',
-                                textAlign: 'left',
+                                padding: isMobile ? '10px 4px' : '10px 40px',
+                                textAlign: isMobile ? 'center' : 'left',
                                 wordBreak: 'break-word',
                                 transition: 'font-size 0.2s ease'
                             }}
@@ -962,6 +1176,99 @@ export default function ReaderPage({ params }: { params: Promise<{ id: string }>
                     overflow: visible !important;
                 }
             `}</style>
+
+            {/* Mobile Bottom Panel */}
+            {isMobile && !zenMode && (
+                <MobileBottomPanel
+                    isOpen={bottomPanelOpen}
+                    activeTab={bottomPanelTab}
+                    onTabChange={setBottomPanelTab}
+                    onClose={() => {
+                        setBottomPanelOpen(false);
+                        setActiveParagraphHash(null);
+                        setActiveNoteContent(null);
+                        setActiveChatParagraphHash(null);
+                        setActiveTranslationParagraphHash(null);
+                    }}
+                >
+                    {bottomPanelTab === 'translation' && activeTranslationParagraphHash && (() => {
+                        const paragraphHash = activeTranslationParagraphHash;
+                        const cachedTranslation = translationMap.get(paragraphHash);
+                        const translation = cachedTranslation?.translatedText || null;
+                        
+                        return (
+                            <div className="h-full flex flex-col p-4">
+                                {translation ? (
+                                    <div 
+                                        className="flex-1 overflow-y-auto p-4 rounded-lg"
+                                        style={{
+                                            backgroundColor: 'var(--zen-translation-bg, rgba(255, 241, 242, 0.5))',
+                                            borderWidth: '1px',
+                                            borderStyle: 'solid',
+                                            borderColor: 'var(--zen-translation-border, #fecdd3)',
+                                            color: 'var(--zen-translation-text, #57534e)',
+                                            fontFamily: 'system-ui, sans-serif',
+                                            fontSize: '14px',
+                                            lineHeight: '1.6',
+                                        }}
+                                    >
+                                        {translation}
+                                    </div>
+                                ) : (
+                                    <div className="flex-1 flex items-center justify-center text-center text-sm" style={{ color: 'var(--zen-text-muted, #78716c)' }}>
+                                        <div>
+                                            <p className="mb-4">Translation not available yet</p>
+                                            <p className="text-xs opacity-75">Tap the translate button to generate translation</p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
+                    {bottomPanelTab === 'note' && activeNoteContent && (
+                        <NoteEditorMobile
+                            key={activeNoteContent.paragraphHash}
+                            initialContent={activeNoteContent.content}
+                            onUpdate={activeNoteContent.onUpdate}
+                        />
+                    )}
+                    {bottomPanelTab === 'chat' && activeChatParagraphHash && (() => {
+                        const paragraphHash = activeChatParagraphHash;
+                        const threadId = `${id}|${paragraphHash}`;
+                        const paragraphElement = containerRef.current?.querySelector(`[data-paragraph-hash="${paragraphHash}"]`);
+                        const paragraphText = paragraphElement?.textContent || '';
+                        const cachedTranslation = translationMap.get(paragraphHash);
+                        const translation = cachedTranslation?.translatedText || null;
+                        
+                        return (
+                            <ChatAssistant
+                                bookId={id}
+                                paragraphHash={paragraphHash}
+                                paragraphText={paragraphText}
+                                translation={translation}
+                                isOpen={bottomPanelOpen && bottomPanelTab === 'chat'}
+                                onClose={() => {
+                                    if (bottomPanelTab === 'chat') {
+                                        setBottomPanelOpen(false);
+                                    }
+                                }}
+                                showAllChats={false}
+                                isMobile={true}
+                                onChatDeleted={() => {
+                                    const newMap = new Map(chatMap);
+                                    newMap.delete(threadId);
+                                    setChatMap(newMap);
+                                }}
+                                onChatCreated={() => {
+                                    const newMap = new Map(chatMap);
+                                    newMap.set(threadId, true);
+                                    setChatMap(newMap);
+                                }}
+                            />
+                        );
+                    })()}
+                </MobileBottomPanel>
+            )}
 
             <SettingsModal 
                 isOpen={isSettingsOpen} 

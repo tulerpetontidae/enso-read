@@ -6,6 +6,7 @@ import { IoClose, IoEye, IoEyeOff } from 'react-icons/io5';
 import { checkGoogleTranslateAvailable } from '@/lib/browser';
 import type { TranslationEngine } from '@/lib/translation';
 import { SUPPORTED_LANGUAGES } from '@/lib/languages';
+import { useIsMobile } from '@/hooks/useIsMobile';
 
 export const FONT_OPTIONS = [
     { value: 'serif', label: 'Serif', fontFamily: 'var(--font-noto-serif-jp), "Times New Roman", Times, serif' },
@@ -70,6 +71,7 @@ function getInitialTheme(): string {
 }
 
 export default function SettingsModal({ isOpen, onClose, onSettingsChange }: SettingsModalProps) {
+    const isMobile = useIsMobile();
     const [apiKey, setApiKey] = useState('');
     const [showKey, setShowKey] = useState(false);
     const [apiKeyStorageMode, setApiKeyStorageMode] = useState<'temporary' | 'persistent'>('temporary');
@@ -291,30 +293,32 @@ export default function SettingsModal({ isOpen, onClose, onSettingsChange }: Set
                             </div>
                         </div>
 
-                        {/* Width Selection */}
-                        <div className="space-y-2">
-                            <label className="block text-sm font-medium" style={{ color: 'var(--zen-text)' }}>Text Width</label>
-                            <div className="flex gap-2">
-                                {WIDTH_OPTIONS.map((width) => (
-                                    <button
-                                        key={width.value}
-                                        onClick={() => setSelectedWidth(width.value)}
-                                        className={`flex-1 px-4 py-2 rounded-xl border text-sm transition-all ${
-                                            selectedWidth === width.value
-                                                ? 'border-rose-300 bg-rose-50 text-rose-700'
-                                                : ''
-                                        }`}
-                                        style={selectedWidth !== width.value ? {
-                                            backgroundColor: 'var(--zen-btn-bg)',
-                                            borderColor: 'var(--zen-btn-border)',
-                                            color: 'var(--zen-btn-text)'
-                                        } : undefined}
-                                    >
-                                        {width.label}
-                                    </button>
-                                ))}
+                        {/* Width Selection - Hidden on mobile */}
+                        {!isMobile && (
+                            <div className="space-y-2">
+                                <label className="block text-sm font-medium" style={{ color: 'var(--zen-text)' }}>Text Width</label>
+                                <div className="flex gap-2">
+                                    {WIDTH_OPTIONS.map((width) => (
+                                        <button
+                                            key={width.value}
+                                            onClick={() => setSelectedWidth(width.value)}
+                                            className={`flex-1 px-4 py-2 rounded-xl border text-sm transition-all ${
+                                                selectedWidth === width.value
+                                                    ? 'border-rose-300 bg-rose-50 text-rose-700'
+                                                    : ''
+                                            }`}
+                                            style={selectedWidth !== width.value ? {
+                                                backgroundColor: 'var(--zen-btn-bg)',
+                                                borderColor: 'var(--zen-btn-border)',
+                                                color: 'var(--zen-btn-text)'
+                                            } : undefined}
+                                        >
+                                            {width.label}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
-                        </div>
+                        )}
                         
                         {/* Font Size Selection */}
                         <div className="space-y-2">

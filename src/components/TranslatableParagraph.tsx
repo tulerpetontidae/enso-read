@@ -7,6 +7,8 @@ import { checkGoogleTranslateAvailable } from '@/lib/browser';
 import { IoTrashOutline, IoChatbubbleOutline, IoBookmark, IoBookmarkOutline } from 'react-icons/io5';
 import ChatAssistant from './ChatAssistant';
 import BookmarkSelector from './BookmarkSelector';
+import { useIsMobile } from '@/hooks/useIsMobile';
+import type { BottomPanelTab } from './MobileBottomPanel';
 
 // Simple hash function for paragraph text
 function hashText(text: string): string {
@@ -39,6 +41,11 @@ interface TranslatableParagraphProps {
     onNoteUpdate?: (paragraphHash: string, note: { content: string; height?: number } | null) => void;
     onBookmarkUpdate?: (paragraphHash: string, bookmark: { colorGroupId: string } | null) => void;
     onChatUpdate?: (threadId: string, hasChat: boolean) => void;
+    // Mobile-specific callbacks
+    onOpenBottomPanel?: (tab: BottomPanelTab, paragraphHash: string) => void;
+    // Active paragraph tracking
+    activeParagraphHash?: string | null;
+    onParagraphActivate?: (paragraphHash: string) => void;
 }
 
 const TranslatableParagraph = React.memo(function TranslatableParagraph({ 
@@ -59,8 +66,17 @@ const TranslatableParagraph = React.memo(function TranslatableParagraph({
     onNoteUpdate,
     onBookmarkUpdate,
     onChatUpdate,
+    onOpenBottomPanel,
+    activeParagraphHash = null,
+    onParagraphActivate,
 }: TranslatableParagraphProps) {
-    // Hover state
+    const isMobile = useIsMobile();
+    
+    // Mobile: tap state (buttons appear on tap instead of hover)
+    const [isTapped, setIsTapped] = useState(false);
+    const tapTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    
+    // Hover state (desktop)
     const [isHovered, setIsHovered] = useState(false);
     const [isButtonHovered, setIsButtonHovered] = useState(false);
     const [isNoteButtonHovered, setIsNoteButtonHovered] = useState(false);
@@ -92,12 +108,18 @@ const TranslatableParagraph = React.memo(function TranslatableParagraph({
     const containerRef = useRef<HTMLDivElement>(null);
     const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
     const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const bookmarkButtonRef = useRef<HTMLButtonElement>(null);
 
     // Use pre-calculated paragraphHash from parent (no need to recalculate)
     const translationId = `${bookId}-${paragraphHash}`;
     const noteId = `${bookId}-${paragraphHash}`;
     const threadId = `${bookId}|${paragraphHash}`;
     const bookmarkId = `${bookId}-${paragraphHash}`;
+
+    // Track if note is being edited to prevent overwrites
+    const isNoteBeingEditedRef = useRef(false);
+    const lastSavedNoteContentRef = useRef<string>('');
+    const previousCachedNoteRef = useRef<{ content: string; height?: number } | null>(null);
 
     // Phase 1: Use pre-loaded data from lookup maps instead of DB queries
     useEffect(() => {
@@ -106,13 +128,38 @@ const TranslatableParagraph = React.memo(function TranslatableParagraph({
             setTranslation(cachedTranslation.translatedText);
         }
         
-        // Set note from cached data
+        // Set note from cached data - but only if not currently being edited
         if (cachedNote) {
-            setNoteContent(cachedNote.content);
-            setSavedNoteContent(cachedNote.content);
-            if (cachedNote.height) {
-                setNoteHeight(cachedNote.height);
+            const cachedContent = cachedNote.content;
+            const previousContent = previousCachedNoteRef.current?.content;
+            
+            // Only update if:
+            // 1. Note is not open (not being edited) - always sync
+            // 2. OR note just opened (previous was null) - initial load
+            // 3. OR cached content matches what we last saved (our own save) - safe to sync
+            // 4. OR cached content is different from previous AND we're not editing (external change)
+            const shouldUpdate = !isNoteOpen || 
+                                 previousCachedNoteRef.current === null ||
+                                 cachedContent === lastSavedNoteContentRef.current ||
+                                 (cachedContent !== previousContent && !isNoteBeingEditedRef.current);
+            
+            if (shouldUpdate) {
+                setNoteContent(cachedContent);
+                setSavedNoteContent(cachedContent);
+                if (cachedNote.height) {
+                    setNoteHeight(cachedNote.height);
+                }
             }
+            
+            // Update ref for next comparison
+            previousCachedNoteRef.current = cachedNote;
+        } else {
+            // Only clear if note is not open
+            if (!isNoteOpen) {
+                setNoteContent('');
+                setSavedNoteContent('');
+            }
+            previousCachedNoteRef.current = null;
         }
         
         // Set chat state from cached data
@@ -137,7 +184,7 @@ const TranslatableParagraph = React.memo(function TranslatableParagraph({
             setCurrentBookmarkGroupId(null);
             setBookmarkGroupColor(null);
         }
-    }, [cachedTranslation, cachedNote, cachedHasChat, cachedBookmark, bookmarkGroupMap]);
+    }, [cachedTranslation, cachedNote, cachedHasChat, cachedBookmark, bookmarkGroupMap, isNoteOpen]);
 
     // Also update bookmark color when bookmarkGroupMap changes (for when group colors are updated)
     useEffect(() => {
@@ -198,7 +245,43 @@ const TranslatableParagraph = React.memo(function TranslatableParagraph({
         }
     }, [showAllChats, hasChat]);
 
+    // Mobile: handle paragraph tap
+    const handleParagraphClick = (e: React.MouseEvent) => {
+        if (isMobile && !zenMode) {
+            // Don't show buttons if clicking on a button, interactive element, or bookmark selector
+            const target = e.target as HTMLElement;
+            if (target.closest('button') || target.closest('textarea') || target.closest('input')) {
+                return;
+            }
+            
+            // Check if clicking on bookmark selector - if so, don't do anything
+            if (target.closest('[data-bookmark-selector]')) {
+                return;
+            }
+            
+            // Activate this paragraph
+            if (onParagraphActivate) {
+                onParagraphActivate(paragraphHash);
+            }
+            
+            // Toggle tap state
+            setIsTapped(!isTapped);
+            
+            // Auto-hide after 3 seconds if not interacting
+            if (tapTimeoutRef.current) {
+                clearTimeout(tapTimeoutRef.current);
+            }
+            tapTimeoutRef.current = setTimeout(() => {
+                if (!isNoteOpen && !isChatOpen && !isBookmarkSelectorOpen && !showTranslation) {
+                    setIsTapped(false);
+                }
+            }, 3000);
+        }
+    };
+
+    // Desktop: hover handlers (unchanged)
     const handleMouseEnter = () => {
+        if (isMobile) return; // Ignore hover on mobile
         if (hoverTimeoutRef.current) {
             clearTimeout(hoverTimeoutRef.current);
         }
@@ -206,6 +289,7 @@ const TranslatableParagraph = React.memo(function TranslatableParagraph({
     };
 
     const handleMouseLeave = () => {
+        if (isMobile) return; // Ignore hover on mobile
         hoverTimeoutRef.current = setTimeout(() => {
             if (!isButtonHovered && !isNoteButtonHovered && !isNoteOpen) {
                 setIsHovered(false);
@@ -245,11 +329,30 @@ const TranslatableParagraph = React.memo(function TranslatableParagraph({
         }, 150);
     };
 
-    const handleTranslate = async () => {
-        // If we already have a translation, just toggle display
-        if (translation) {
-            setShowTranslation(!showTranslation);
-            return;
+    const handleTranslate = async (e?: React.MouseEvent) => {
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        
+        // Mobile: open translation in bottom panel, trigger translation if needed
+        if (isMobile) {
+            if (onOpenBottomPanel) {
+                onOpenBottomPanel('translation', paragraphHash);
+            }
+            // If translation doesn't exist, fetch it
+            if (!translation) {
+                // Trigger translation (continue with normal flow)
+            } else {
+                // Translation exists, just opened panel
+                return;
+            }
+        } else {
+            // Desktop: If we already have a translation, just toggle display
+            if (translation) {
+                setShowTranslation(!showTranslation);
+                return;
+            }
         }
 
         setIsLoading(true);
@@ -328,7 +431,10 @@ const TranslatableParagraph = React.memo(function TranslatableParagraph({
             }
 
             setTranslation(translatedText);
-            setShowTranslation(true);
+            // On mobile, translation is shown in bottom panel, not inline
+            if (!isMobile) {
+                setShowTranslation(true);
+            }
         } catch (e) {
             console.error('Translation error:', e);
             setError(e instanceof Error ? e.message : 'Translation failed');
@@ -359,11 +465,34 @@ const TranslatableParagraph = React.memo(function TranslatableParagraph({
         await handleTranslate();
     };
 
-    const handleNoteClick = () => {
-        setIsNoteOpen(!isNoteOpen);
-        if (!isNoteOpen) {
-            // Focus textarea when opening
-            setTimeout(() => noteTextareaRef.current?.focus(), 100);
+    const hasTranslation = !!translation;
+    const hasNote = !!savedNoteContent;
+    const hasBookmark = !!currentBookmarkGroupId;
+
+    const handleNoteClick = (e?: React.MouseEvent) => {
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        
+        if (isMobile) {
+            // On mobile, open bottom panel with note tab
+            if (onOpenBottomPanel) {
+                onOpenBottomPanel('note', paragraphHash);
+            }
+        } else {
+            // Desktop: toggle note sidebar
+            const wasOpen = isNoteOpen;
+            setIsNoteOpen(!isNoteOpen);
+            if (!wasOpen) {
+                // Opening note - reset editing flag
+                isNoteBeingEditedRef.current = false;
+                // Focus textarea when opening
+                setTimeout(() => noteTextareaRef.current?.focus(), 100);
+            } else {
+                // Closing note - reset editing flag
+                isNoteBeingEditedRef.current = false;
+            }
         }
     };
 
@@ -396,6 +525,8 @@ const TranslatableParagraph = React.memo(function TranslatableParagraph({
                     onNoteUpdate(paragraphHash, null);
                 }
             }
+            // Track what we saved to prevent overwrites
+            lastSavedNoteContentRef.current = noteContent;
             setSavedNoteContent(noteContent);
         } catch (e) {
             console.error('Failed to save note:', e);
@@ -419,15 +550,34 @@ const TranslatableParagraph = React.memo(function TranslatableParagraph({
         }
     };
 
-    const showButtons = isHovered || isButtonHovered || isNoteButtonHovered || isChatButtonHovered || isBookmarkButtonHovered || isNoteOpen || isChatOpen || isBookmarkSelectorOpen;
-    const hasTranslation = !!translation;
-    const hasNote = !!savedNoteContent;
-    const hasBookmark = !!currentBookmarkGroupId;
+    // Desktop: show buttons on hover/interaction
+    // Check if this paragraph is the active one
+    const isActiveParagraph = activeParagraphHash === paragraphHash;
     
-    const handleBookmarkClick = (e: React.MouseEvent) => {
+    // Mobile: show buttons on tap (or if active like bookmarks/notes) - only for active paragraph
+    // Bookmark button should always be visible if it has a bookmark
+    const showButtons = isMobile 
+        ? isActiveParagraph && (isTapped || hasBookmark || hasNote || hasChat || isNoteOpen || isChatOpen || isBookmarkSelectorOpen)
+        : (isHovered || isButtonHovered || isNoteButtonHovered || isChatButtonHovered || isBookmarkButtonHovered || isNoteOpen || isChatOpen || isBookmarkSelectorOpen || hasBookmark);
+    
+    const handleBookmarkClick = (e: React.MouseEvent | React.TouchEvent) => {
         e.preventDefault();
         e.stopPropagation();
-        setIsBookmarkSelectorOpen(!isBookmarkSelectorOpen);
+        // If clicking the bookmark button while selector is open, close it
+        // Otherwise, open it
+        if (isBookmarkSelectorOpen) {
+            setIsBookmarkSelectorOpen(false);
+        } else {
+            setIsBookmarkSelectorOpen(true);
+            // Activate this paragraph when opening bookmark selector
+            if (onParagraphActivate) {
+                onParagraphActivate(paragraphHash);
+            }
+        }
+        // Force hover state to show buttons
+        if (!isMobile) {
+            setIsBookmarkButtonHovered(true);
+        }
     };
 
     const handleBookmarkSelect = async (colorGroupId: string | null) => {
@@ -485,10 +635,23 @@ const TranslatableParagraph = React.memo(function TranslatableParagraph({
     const handleChatClick = (e: React.MouseEvent) => {
         e.preventDefault();
         e.stopPropagation();
-        setIsChatOpen(!isChatOpen);
-        if (!isChatOpen && !hasChat) {
-            // When opening chat for first time, mark as having chat
-            setHasChat(true);
+        
+        if (isMobile) {
+            // On mobile, open bottom panel with chat tab
+            if (onOpenBottomPanel) {
+                onOpenBottomPanel('chat', paragraphHash);
+            }
+            if (!hasChat) {
+                // Mark as having chat when opening for first time
+                setHasChat(true);
+            }
+        } else {
+            // Desktop: toggle chat sidebar
+            setIsChatOpen(!isChatOpen);
+            if (!isChatOpen && !hasChat) {
+                // When opening chat for first time, mark as having chat
+                setHasChat(true);
+            }
         }
     };
     
@@ -500,16 +663,279 @@ const TranslatableParagraph = React.memo(function TranslatableParagraph({
     return (
         <div 
             ref={containerRef}
-            className="relative"
+            className="relative transition-colors duration-200"
             data-paragraph-hash={paragraphHash}
-            style={{ marginLeft: '-60px', marginRight: '-60px', paddingLeft: '60px', paddingRight: '60px' }}
+            style={{ 
+                marginLeft: isMobile ? '0' : '-60px', 
+                marginRight: isMobile ? '0' : '-60px', 
+                paddingLeft: isMobile ? '48px' : '60px', 
+                paddingRight: isMobile ? '48px' : '60px',
+                backgroundColor: isActiveParagraph && isMobile && !zenMode 
+                    ? 'var(--zen-accent-bg, rgba(255, 241, 242, 0.3))' 
+                    : 'transparent',
+                borderRadius: isActiveParagraph && isMobile && !zenMode ? '8px' : '0',
+                paddingTop: isActiveParagraph && isMobile && !zenMode ? '8px' : '0',
+                paddingBottom: isActiveParagraph && isMobile && !zenMode ? '8px' : '0',
+            }}
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
+            onClick={handleParagraphClick}
         >
-            {/* Bookmark button - right side, between paragraph and note/chat buttons (hidden in zen mode) */}
-            {!zenMode && (
+            {/* Mobile: Translate button - left side */}
+            {!zenMode && isMobile && (
                 <button
-                    onClick={handleBookmarkClick}
+                    onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleTranslate(e);
+                    }}
+                    disabled={isLoading}
+                    className={`
+                        absolute left-2 top-1 z-30
+                        w-8 h-8 
+                        flex items-center justify-center 
+                        rounded-full 
+                        transition-all duration-300 ease-out
+                        ${showButtons ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-2'}
+                        ${isLoading ? 'animate-pulse' : ''}
+                        focus:outline-none focus:ring-2 focus:ring-rose-200
+                    `}
+                    style={{
+                        transform: showButtons ? 'translateX(0)' : 'translateX(-8px)',
+                        boxShadow: showButtons ? '0 4px 12px rgba(0,0,0,0.08)' : 'none',
+                        backgroundColor: hasTranslation 
+                            ? 'var(--zen-translation-btn-active-bg, rgba(16, 185, 129, 0.15))' 
+                            : 'var(--zen-translation-btn-bg, rgba(255, 255, 255, 0.9))',
+                        borderWidth: hasTranslation ? '2px' : '1px',
+                        borderStyle: 'solid',
+                        borderColor: hasTranslation 
+                            ? 'var(--zen-translation-btn-active-border, rgba(16, 185, 129, 0.4))' 
+                            : 'var(--zen-translation-btn-border, rgba(0, 0, 0, 0.1))',
+                        color: hasTranslation 
+                            ? 'var(--zen-translation-btn-active-text, rgba(16, 185, 129, 0.8))' 
+                            : 'var(--zen-translation-btn-text, rgba(0, 0, 0, 0.5))',
+                    }}
+                    title={hasTranslation ? 'Show/hide translation' : 'Translate paragraph'}
+                >
+                    {isLoading ? (
+                        <span className="w-4 h-4 border-2 border-rose-300 border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                        <svg 
+                            width="16" 
+                            height="16" 
+                            viewBox="0 0 24 24" 
+                            fill="none" 
+                            stroke="currentColor" 
+                            strokeWidth="2" 
+                            strokeLinecap="round" 
+                            strokeLinejoin="round"
+                        >
+                            <path d="M5 8l6 6" />
+                            <path d="M4 14l6-6 2-3" />
+                            <path d="M2 5h12" />
+                            <path d="M7 2h1" />
+                            <path d="M22 22l-5-10-5 10" />
+                            <path d="M14 18h6" />
+                        </svg>
+                    )}
+                </button>
+            )}
+
+            {/* Mobile: Right-side buttons (vertical stack) - hidden in zen mode */}
+            {!zenMode && isMobile && (
+                <div 
+                    className={`absolute right-2 top-1 z-30 flex flex-col gap-1.5 transition-all duration-300 ease-out ${
+                        showButtons ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2'
+                    }`}
+                    style={{
+                        transform: showButtons ? 'translateX(0)' : 'translateX(8px)',
+                    }}
+                >
+                    {/* Note button - top */}
+                    <button
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleNoteClick(e);
+                        }}
+                        className={`
+                            w-8 h-8 
+                            flex items-center justify-center 
+                            rounded-full 
+                            transition-all duration-300 ease-out
+                            focus:outline-none focus:ring-2
+                        `}
+                        style={{
+                            boxShadow: (showButtons || hasNote) ? '0 4px 12px rgba(0,0,0,0.08)' : 'none',
+                            backgroundColor: hasNote 
+                                ? 'var(--zen-note-btn-active-bg, rgba(245, 158, 11, 0.15))' 
+                                : 'var(--zen-note-btn-bg, rgba(255, 255, 255, 0.9))',
+                            borderWidth: hasNote ? '2px' : '1px',
+                            borderStyle: 'solid',
+                            borderColor: hasNote 
+                                ? 'var(--zen-note-btn-active-border, rgba(245, 158, 11, 0.4))' 
+                                : 'var(--zen-note-btn-border, rgba(0, 0, 0, 0.1))',
+                            color: hasNote 
+                                ? 'var(--zen-note-btn-active-text, rgba(245, 158, 11, 0.8))' 
+                                : 'var(--zen-note-btn-text, rgba(0, 0, 0, 0.5))',
+                        }}
+                        title={hasNote ? 'Edit note' : 'Add note'}
+                    >
+                        <svg 
+                            width="14" 
+                            height="14" 
+                            viewBox="0 0 24 24" 
+                            fill="none" 
+                            stroke="currentColor" 
+                            strokeWidth="2" 
+                            strokeLinecap="round" 
+                            strokeLinejoin="round"
+                        >
+                            <path d="M12 20h9" />
+                            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                        </svg>
+                    </button>
+
+                    {/* Chat button - middle */}
+                    <button
+                        onClick={handleChatClick}
+                        className={`
+                            w-8 h-8 
+                            flex items-center justify-center 
+                            rounded-full 
+                            transition-all duration-300 ease-out
+                            focus:outline-none focus:ring-2
+                        `}
+                        style={{
+                            boxShadow: (showButtons || hasChat) ? '0 4px 12px rgba(0,0,0,0.08)' : 'none',
+                            backgroundColor: hasChat 
+                                ? 'var(--zen-note-btn-active-bg, rgba(139, 92, 246, 0.15))' 
+                                : 'var(--zen-note-btn-bg, rgba(255, 255, 255, 0.9))',
+                            borderWidth: hasChat ? '2px' : '1px',
+                            borderStyle: 'solid',
+                            borderColor: hasChat 
+                                ? 'var(--zen-note-btn-active-border, rgba(139, 92, 246, 0.4))' 
+                                : 'var(--zen-note-btn-border, rgba(0, 0, 0, 0.1))',
+                            color: hasChat 
+                                ? 'var(--zen-note-btn-active-text, rgba(139, 92, 246, 0.8))' 
+                                : 'var(--zen-note-btn-text, rgba(0, 0, 0, 0.5))',
+                        }}
+                        title={hasChat ? 'Open AI chat' : 'Start AI chat'}
+                    >
+                        <IoChatbubbleOutline size={14} />
+                    </button>
+
+                    {/* Bookmark button - bottom */}
+                    <button
+                        ref={bookmarkButtonRef}
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleBookmarkClick(e);
+                        }}
+                        className={`
+                            w-8 h-8 
+                            flex items-center justify-center 
+                            rounded-full 
+                            transition-all duration-300 ease-out
+                            ${(showButtons || hasBookmark) ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2'}
+                            focus:outline-none focus:ring-2 focus:ring-rose-200
+                        `}
+                        style={{
+                            boxShadow: (showButtons || hasBookmark) ? '0 4px 12px rgba(0,0,0,0.08)' : 'none',
+                            backgroundColor: hasBookmark && bookmarkGroupColor
+                                ? `${bookmarkGroupColor}20` // 20% opacity
+                                : 'var(--zen-btn-bg, rgba(255, 255, 255, 0.9))',
+                            borderWidth: hasBookmark ? '2px' : '1px',
+                            borderStyle: 'solid',
+                            borderColor: hasBookmark && bookmarkGroupColor
+                                ? bookmarkGroupColor
+                                : 'var(--zen-btn-border, rgba(0, 0, 0, 0.1))',
+                            color: hasBookmark && bookmarkGroupColor
+                                ? bookmarkGroupColor
+                                : 'var(--zen-btn-text, rgba(0, 0, 0, 0.5))',
+                        }}
+                        title={hasBookmark ? 'Change bookmark' : 'Bookmark paragraph'}
+                    >
+                        {hasBookmark ? (
+                            <IoBookmark size={16} />
+                        ) : (
+                            <IoBookmarkOutline size={16} />
+                        )}
+                    </button>
+                </div>
+            )}
+
+            {/* Desktop: Translation button - left side (hidden in zen mode) */}
+            {!zenMode && !isMobile && (
+                <button
+                    onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleTranslate(e);
+                    }}
+                    onMouseEnter={handleButtonMouseEnter}
+                    onMouseLeave={handleButtonMouseLeave}
+                    disabled={isLoading}
+                    className={`
+                        absolute -left-3 top-1 
+                        w-8 h-8 
+                        flex items-center justify-center 
+                        rounded-full 
+                        transition-all duration-300 ease-out
+                        ${showButtons ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-2'}
+                        ${isLoading ? 'animate-pulse' : ''}
+                        focus:outline-none focus:ring-2 focus:ring-rose-200
+                    `}
+                    style={{
+                        boxShadow: showButtons ? '0 4px 12px rgba(0,0,0,0.08)' : 'none',
+                        backgroundColor: hasTranslation 
+                            ? 'var(--zen-translation-btn-active-bg, rgba(16, 185, 129, 0.15))' 
+                            : 'var(--zen-translation-btn-bg, rgba(255, 255, 255, 0.9))',
+                        borderWidth: hasTranslation ? '2px' : '1px',
+                        borderStyle: 'solid',
+                        borderColor: hasTranslation 
+                            ? 'var(--zen-translation-btn-active-border, rgba(16, 185, 129, 0.4))' 
+                            : 'var(--zen-translation-btn-border, rgba(0, 0, 0, 0.1))',
+                        color: hasTranslation 
+                            ? 'var(--zen-translation-btn-active-text, rgba(16, 185, 129, 0.8))' 
+                            : 'var(--zen-translation-btn-text, rgba(0, 0, 0, 0.5))',
+                    }}
+                    title={hasTranslation ? 'Show/hide translation' : 'Translate paragraph'}
+                >
+                    {isLoading ? (
+                        <span className="w-4 h-4 border-2 border-rose-300 border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                        <svg 
+                            width="16" 
+                            height="16" 
+                            viewBox="0 0 24 24" 
+                            fill="none" 
+                            stroke="currentColor" 
+                            strokeWidth="2" 
+                            strokeLinecap="round" 
+                            strokeLinejoin="round"
+                        >
+                            <path d="M5 8l6 6" />
+                            <path d="M4 14l6-6 2-3" />
+                            <path d="M2 5h12" />
+                            <path d="M7 2h1" />
+                            <path d="M22 22l-5-10-5 10" />
+                            <path d="M14 18h6" />
+                        </svg>
+                    )}
+                </button>
+            )}
+
+            {/* Desktop: Bookmark button - right side */}
+            {!zenMode && !isMobile && (
+                <button
+                    ref={bookmarkButtonRef}
+                    onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleBookmarkClick(e);
+                    }}
                     onMouseEnter={() => setIsBookmarkButtonHovered(true)}
                     onMouseLeave={() => setIsBookmarkButtonHovered(false)}
                     className={`
@@ -534,6 +960,8 @@ const TranslatableParagraph = React.memo(function TranslatableParagraph({
                         color: hasBookmark && bookmarkGroupColor
                             ? bookmarkGroupColor
                             : 'var(--zen-btn-text, rgba(0, 0, 0, 0.5))',
+                        zIndex: hasBookmark ? 35 : 30, // Higher z-index when active to ensure clickability
+                        pointerEvents: 'auto',
                     }}
                     title={hasBookmark ? 'Change bookmark' : 'Bookmark paragraph'}
                 >
@@ -545,67 +973,14 @@ const TranslatableParagraph = React.memo(function TranslatableParagraph({
                 </button>
             )}
 
-            {/* Translation button - left side (hidden in zen mode) */}
-            {!zenMode && (
+            {/* Desktop: Note button - right side */}
+            {!zenMode && !isMobile && (
                 <button
-                    onClick={handleTranslate}
-                    onMouseEnter={handleButtonMouseEnter}
-                    onMouseLeave={handleButtonMouseLeave}
-                    disabled={isLoading}
-                    className={`
-                        absolute -left-3 top-1 
-                        w-8 h-8 
-                        flex items-center justify-center 
-                        rounded-full 
-                        transition-all duration-300 ease-out
-                        ${showButtons ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-2'}
-                        ${isLoading ? 'animate-pulse' : ''}
-                        focus:outline-none focus:ring-2 focus:ring-rose-200
-                    `}
-                style={{
-                    boxShadow: showButtons ? '0 4px 12px rgba(0,0,0,0.08)' : 'none',
-                    backgroundColor: hasTranslation 
-                        ? 'var(--zen-translation-btn-active-bg, rgba(16, 185, 129, 0.15))' 
-                        : 'var(--zen-translation-btn-bg, rgba(255, 255, 255, 0.9))',
-                    borderWidth: hasTranslation ? '2px' : '1px',
-                    borderStyle: 'solid',
-                    borderColor: hasTranslation 
-                        ? 'var(--zen-translation-btn-active-border, rgba(16, 185, 129, 0.4))' 
-                        : 'var(--zen-translation-btn-border, rgba(0, 0, 0, 0.1))',
-                    color: hasTranslation 
-                        ? 'var(--zen-translation-btn-active-text, rgba(16, 185, 129, 0.8))' 
-                        : 'var(--zen-translation-btn-text, rgba(0, 0, 0, 0.5))',
-                }}
-                title={hasTranslation ? 'Show/hide translation' : 'Translate paragraph'}
-            >
-                {isLoading ? (
-                    <span className="w-4 h-4 border-2 border-rose-300 border-t-transparent rounded-full animate-spin" />
-                ) : (
-                    <svg 
-                        width="16" 
-                        height="16" 
-                        viewBox="0 0 24 24" 
-                        fill="none" 
-                        stroke="currentColor" 
-                        strokeWidth="2" 
-                        strokeLinecap="round" 
-                        strokeLinejoin="round"
-                    >
-                        <path d="M5 8l6 6" />
-                        <path d="M4 14l6-6 2-3" />
-                        <path d="M2 5h12" />
-                        <path d="M7 2h1" />
-                        <path d="M22 22l-5-10-5 10" />
-                        <path d="M14 18h6" />
-                    </svg>
-                )}
-                </button>
-            )}
-
-            {/* Note button - right side (hidden in zen mode) */}
-            {!zenMode && (
-                <button
-                    onClick={handleNoteClick}
+                    onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleNoteClick(e);
+                    }}
                     onMouseEnter={handleNoteButtonMouseEnter}
                     onMouseLeave={handleNoteButtonMouseLeave}
                     className={`
@@ -658,8 +1033,8 @@ const TranslatableParagraph = React.memo(function TranslatableParagraph({
                 </button>
             )}
 
-            {/* Chat button - right side, next to note button (hidden in zen mode) */}
-            {!zenMode && (
+            {/* Desktop: Chat button - right side */}
+            {!zenMode && !isMobile && (
                 <button
                     onClick={handleChatClick}
                     onMouseEnter={() => setIsChatButtonHovered(true)}
@@ -699,8 +1074,8 @@ const TranslatableParagraph = React.memo(function TranslatableParagraph({
                 {children}
             </div>
 
-            {/* Translation display (hidden in zen mode) */}
-            {!zenMode && showTranslation && translation && (
+            {/* Translation display - Desktop (hidden in zen mode) */}
+            {!zenMode && !isMobile && showTranslation && translation && (
                 <div 
                     className="relative py-2 pl-4 pr-12 border-l-2 rounded-r-lg text-base leading-relaxed animate-in fade-in slide-in-from-top-2 duration-300"
                     style={{ 
@@ -725,6 +1100,7 @@ const TranslatableParagraph = React.memo(function TranslatableParagraph({
                 </div>
             )}
 
+
             {/* Bookmark Selector (hidden in zen mode) */}
             {!zenMode && isBookmarkSelectorOpen && (
                 <BookmarkSelector
@@ -733,11 +1109,12 @@ const TranslatableParagraph = React.memo(function TranslatableParagraph({
                     currentColorGroupId={currentBookmarkGroupId}
                     onSelect={handleBookmarkSelect}
                     onClose={() => setIsBookmarkSelectorOpen(false)}
+                    buttonRef={bookmarkButtonRef}
                 />
             )}
 
-            {/* Chat Assistant (hidden in zen mode) */}
-            {!zenMode && (
+            {/* Chat Assistant - Desktop only (hidden in zen mode) */}
+            {!zenMode && !isMobile && (
                 <ChatAssistant
                     bookId={bookId}
                     paragraphHash={paragraphHash}
@@ -766,8 +1143,8 @@ const TranslatableParagraph = React.memo(function TranslatableParagraph({
                 />
             )}
 
-            {/* Note input area (hidden in zen mode) */}
-            {!zenMode && isNoteOpen && (
+            {/* Note input area - Desktop only (hidden in zen mode) */}
+            {!zenMode && !isMobile && isNoteOpen && (
                 <div 
                     className="absolute -right-3 top-10 w-64 animate-in fade-in slide-in-from-right-2 duration-200 z-10"
                     style={{ marginRight: '-220px' }}
@@ -799,6 +1176,7 @@ const TranslatableParagraph = React.memo(function TranslatableParagraph({
                             ref={noteTextareaRef}
                             value={noteContent}
                             onChange={(e) => {
+                                isNoteBeingEditedRef.current = true;
                                 setNoteContent(e.target.value);
                                 // Auto-resize based on content
                                 if (e.target.scrollHeight > noteHeight) {
@@ -807,6 +1185,9 @@ const TranslatableParagraph = React.memo(function TranslatableParagraph({
                             }}
                             onBlur={handleNoteBlur}
                             onKeyDown={handleNoteKeyDown}
+                            onFocus={() => {
+                                isNoteBeingEditedRef.current = true;
+                            }}
                             placeholder="Write your note..."
                             className="w-full p-3 text-sm resize-y focus:outline-none"
                             style={{ 
