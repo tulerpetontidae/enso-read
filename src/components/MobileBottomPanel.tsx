@@ -57,10 +57,9 @@ export type BottomPanelTab = 'note' | 'chat' | 'translation';
 
 interface MobileBottomPanelProps {
   isOpen: boolean;
-  activeTab: BottomPanelTab;
-  onTabChange: (tab: BottomPanelTab) => void;
+  initialTab?: BottomPanelTab;  // Only used when opening, not controlled
   onClose: () => void;
-  children?: React.ReactNode;
+  translationContent?: React.ReactNode;
   noteContent?: React.ReactNode;
   chatContent?: React.ReactNode;
 }
@@ -73,13 +72,15 @@ type PanelState = 'collapsed' | 'partial' | 'full';
  */
 function MobileBottomPanel({
   isOpen,
-  activeTab,
-  onTabChange,
+  initialTab = 'translation',
   onClose,
-  children,
+  translationContent,
   noteContent,
   chatContent,
 }: MobileBottomPanelProps) {
+  // CRITICAL: Tab state is managed INTERNALLY to avoid parent re-renders
+  // This makes tab switching instant regardless of book size
+  const [activeTab, setActiveTab] = useState<BottomPanelTab>(initialTab);
   const [panelState, setPanelState] = useState<PanelState>('partial');
   const [dragStartY, setDragStartY] = useState<number | null>(null);
   const [dragStartHeight, setDragStartHeight] = useState<number>(0);
@@ -97,6 +98,13 @@ function MobileBottomPanel({
   const partialHeight = viewportHeight * 0.33; // 33% of viewport
   const collapsedHeight = 48; // Handle height only
   const fullHeight = viewportHeight;
+
+  // Sync tab with initialTab when panel opens (allows parent to control initial tab)
+  useEffect(() => {
+    if (isOpen) {
+      setActiveTab(initialTab);
+    }
+  }, [isOpen, initialTab]);
 
   // Initialize height based on panel state
   useEffect(() => {
@@ -411,7 +419,7 @@ function MobileBottomPanel({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  onTabChange('translation');
+                  setActiveTab('translation');
                 }}
                 className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-medium transition-colors ${
                   activeTab === 'translation' ? '' : 'opacity-60'
@@ -428,7 +436,7 @@ function MobileBottomPanel({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  onTabChange('note');
+                  setActiveTab('note');
                 }}
                 className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-medium transition-colors ${
                   activeTab === 'note' ? '' : 'opacity-60'
@@ -445,7 +453,7 @@ function MobileBottomPanel({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  onTabChange('chat');
+                  setActiveTab('chat');
                 }}
                 className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-medium transition-colors ${
                   activeTab === 'chat' ? '' : 'opacity-60'
@@ -462,19 +470,19 @@ function MobileBottomPanel({
             </div>
           </div>
 
-          {/* Content Area */}
+          {/* Content Area - Render content based on active tab */}
           <div className="flex-1 overflow-hidden flex flex-col">
-            {children && (
+            {activeTab === 'translation' && translationContent && (
               <ScrollableContent onScrollToBottom={onClose}>
-                {children}
+                {translationContent}
               </ScrollableContent>
             )}
-            {!children && activeTab === 'note' && noteContent && (
+            {activeTab === 'note' && noteContent && (
               <ScrollableContent onScrollToBottom={onClose}>
                 {noteContent}
               </ScrollableContent>
             )}
-            {!children && activeTab === 'chat' && chatContent && (
+            {activeTab === 'chat' && chatContent && (
               <ScrollableContent onScrollToBottom={onClose}>
                 {chatContent}
               </ScrollableContent>
@@ -486,16 +494,14 @@ function MobileBottomPanel({
   );
 }
 
-// Memoize to prevent re-renders when parent re-renders (unless props actually change)
+// Memoize to prevent re-renders when parent re-renders
+// CRITICAL: Only compare essential props for panel visibility/initial state
+// Content props use refs in parent so they're stable between renders
 export default React.memo(MobileBottomPanel, (prevProps, nextProps) => {
-  // Only re-render if relevant props change
-  return (
-    prevProps.isOpen === nextProps.isOpen &&
-    prevProps.activeTab === nextProps.activeTab &&
-    prevProps.children === nextProps.children &&
-    prevProps.noteContent === nextProps.noteContent &&
-    prevProps.chatContent === nextProps.chatContent &&
-    prevProps.onTabChange === nextProps.onTabChange &&
-    prevProps.onClose === nextProps.onClose
-  );
+  // Re-render only when panel opens/closes or initial tab changes
+  if (prevProps.isOpen !== nextProps.isOpen) return false;
+  if (prevProps.initialTab !== nextProps.initialTab) return false;
+  // Don't compare content props - they're memoized with refs in parent
+  // and React's children reconciliation will handle actual changes efficiently
+  return true;
 });

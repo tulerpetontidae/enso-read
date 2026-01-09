@@ -384,13 +384,14 @@ function ReaderPageContent({ params }: { params: Promise<{ id: string }> }) {
     // Derived state for bottom panel content
     const activeNoteContent = useMemo(() => {
         if (!activeParagraphHash) return null;
-        const note = noteMap.get(activeParagraphHash);
+        // Use ref to avoid dependency on noteMap - prevents recalculation on every Map update
+        const note = noteMapRef.current.get(activeParagraphHash);
         return {
             content: note?.content || '',
             paragraphHash: activeParagraphHash,
             onUpdate: createNoteUpdateCallbackImmediate(activeParagraphHash),
         };
-    }, [activeParagraphHash, noteMap, createNoteUpdateCallbackImmediate]);
+    }, [activeParagraphHash, createNoteUpdateCallbackImmediate]);
     
     // Use active paragraph hash for chat and translation
     const activeChatParagraphHash = activeParagraphHash;
@@ -499,6 +500,32 @@ function ReaderPageContent({ params }: { params: Promise<{ id: string }> }) {
             content: parse(section.html, parserOptions),
         }));
     }, [sections, parserOptions]);
+
+    // CRITICAL: Also memoize the entire sections rendering to prevent re-creating 
+    // 13,000+ React elements on every state change (like tab switches)
+    const renderedSections = useMemo(() => {
+        return parsedSections.map((section) => (
+            <div 
+                key={section.id}
+                className="epub-section"
+                style={{
+                    fontFamily: currentFont.fontFamily,
+                    fontSize: currentFontSize.size,
+                    lineHeight: '1.9',
+                    color: 'var(--zen-text, #1a1a1a)',
+                    padding: isMobile ? '10px 4px' : '10px 40px',
+                    textAlign: isMobile ? 'center' : 'left',
+                    wordBreak: 'break-word',
+                    overflowWrap: 'break-word',
+                    transition: 'font-size 0.2s ease',
+                    maxWidth: '100%',
+                    boxSizing: 'border-box',
+                }}
+            >
+                {section.content}
+            </div>
+        ));
+    }, [parsedSections, currentFont.fontFamily, currentFontSize.size, isMobile]);
 
     useEffect(() => {
         let bookInstance: Book | null = null;
@@ -885,21 +912,25 @@ function ReaderPageContent({ params }: { params: Promise<{ id: string }> }) {
         return () => clearTimeout(timeout);
     }, [sections, id, bookmarksVersion]);
 
-    // Extract active paragraph data (only recalculates when active paragraph changes)
+    // Extract active paragraph data using REFS to avoid recalculating on every Map update
+    // Only recalculate when the active paragraph hash actually changes
     const activeTranslation = useMemo(() => {
         if (!activeTranslationParagraphHash) return null;
-        return translationMap.get(activeTranslationParagraphHash) || null;
-    }, [activeTranslationParagraphHash, translationMap]);
+        // Use ref to avoid dependency on translationMap
+        return translationMapRef.current.get(activeTranslationParagraphHash) || null;
+    }, [activeTranslationParagraphHash]);
     
     const activeTranslationError = useMemo(() => {
         if (!activeTranslationParagraphHash) return null;
-        return translationErrors.get(activeTranslationParagraphHash) || null;
-    }, [activeTranslationParagraphHash, translationErrors]);
+        // Use ref to avoid dependency on translationErrors
+        return translationErrorsRef.current.get(activeTranslationParagraphHash) || null;
+    }, [activeTranslationParagraphHash]);
     
     const activeNote = useMemo(() => {
         if (!activeParagraphHash) return null;
-        return noteMap.get(activeParagraphHash) || null;
-    }, [activeParagraphHash, noteMap]);
+        // Use ref to avoid dependency on noteMap
+        return noteMapRef.current.get(activeParagraphHash) || null;
+    }, [activeParagraphHash]);
     
     const activeChatThreadId = useMemo(() => {
         if (!activeChatParagraphHash) return null;
@@ -952,11 +983,6 @@ function ReaderPageContent({ params }: { params: Promise<{ id: string }> }) {
         // Clear active paragraph in context
         dataStore.setActiveParagraphHash(null);
     }, [dataStore]);
-
-    // Tab change handler
-    const handleTabChange = useCallback((tab: BottomPanelTab) => {
-        setBottomPanelTab(tab);
-    }, []);
 
     // Memoize bottom panel content to prevent unnecessary re-renders
     // IMPORTANT: Don't depend on bottomPanelTab to avoid recalculating on every tab switch
@@ -1074,6 +1100,18 @@ function ReaderPageContent({ params }: { params: Promise<{ id: string }> }) {
             />
         );
     }, [activeChatParagraphHash, id, activeChatThreadId]);
+
+    // Memoize the note editor JSX to prevent recreating on every render
+    const noteEditorContent = useMemo(() => {
+        if (!activeNoteContent) return undefined;
+        return (
+            <NoteEditorMobile
+                key={activeNoteContent.paragraphHash}
+                initialContent={activeNoteContent.content}
+                onUpdate={activeNoteContent.onUpdate}
+            />
+        );
+    }, [activeNoteContent]);
 
     return (
         <div className="fixed inset-0 flex flex-col overflow-hidden" style={{ backgroundColor: 'var(--zen-reader-bg, #FDFBF7)' }}>
@@ -1268,27 +1306,7 @@ function ReaderPageContent({ params }: { params: Promise<{ id: string }> }) {
                         boxSizing: 'border-box',
                     }}
                 >
-                    {parsedSections.map((section) => (
-                        <div 
-                            key={section.id}
-                            className="epub-section"
-                            style={{
-                                fontFamily: currentFont.fontFamily,
-                                fontSize: currentFontSize.size,
-                                lineHeight: '1.9',
-                                color: 'var(--zen-text, #1a1a1a)',
-                                padding: isMobile ? '10px 4px' : '10px 40px',
-                                textAlign: isMobile ? 'center' : 'left',
-                                wordBreak: 'break-word',
-                                overflowWrap: 'break-word',
-                                transition: 'font-size 0.2s ease',
-                                maxWidth: '100%',
-                                boxSizing: 'border-box',
-                            }}
-                        >
-                            {section.content}
-                        </div>
-                    ))}
+                    {renderedSections}
                 </div>
             </main>
 
@@ -1353,21 +1371,12 @@ function ReaderPageContent({ params }: { params: Promise<{ id: string }> }) {
                 {isMobile && !zenMode && typeof window !== 'undefined' && createPortal(
                     <MobileBottomPanel
                         isOpen={bottomPanelOpen}
-                        activeTab={bottomPanelTab}
-                        onTabChange={handleTabChange}
+                        initialTab={bottomPanelTab}
                         onClose={handleBottomPanelClose}
-                    >
-                        {/* Only render the active tab's content to minimize DOM */}
-                        {bottomPanelTab === 'translation' && translationContent}
-                        {bottomPanelTab === 'note' && activeNoteContent && (
-                            <NoteEditorMobile
-                                key={activeNoteContent.paragraphHash}
-                                initialContent={activeNoteContent.content}
-                                onUpdate={activeNoteContent.onUpdate}
-                            />
-                        )}
-                        {bottomPanelTab === 'chat' && chatContent}
-                    </MobileBottomPanel>,
+                        translationContent={translationContent}
+                        noteContent={noteEditorContent}
+                        chatContent={chatContent}
+                    />,
                     document.body
                 )}
 
