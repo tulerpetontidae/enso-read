@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "copy-bergamot": "node scripts/copy-bergamot-workers.js",
-    "dev": "npm run copy-bergamot && next dev",
+    "dev": "npm run copy-bergamot && next dev --webpack",
     "build": "npm run copy-bergamot && next build",
     "start": "next start",
     "lint": "eslint"

@@ -639,10 +639,22 @@ async function getBergamotTranslator(
           };
 
           try {
-            console.log(`Fetching Bergamot model file: ${url}`);
+            // Check if this is a Google Cloud Storage URL that needs proxying
+            const gcsBaseUrl = 'https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data';
+            const needsProxy = url.startsWith(gcsBaseUrl);
+            
+            // Use API proxy for GCS URLs to bypass CORS restrictions
+            // Construct absolute URL for the proxy if we're in the browser
+            const fetchUrl = needsProxy 
+              ? (typeof window !== 'undefined' 
+                  ? `${window.location.origin}/api/bergamot/model?url=${encodeURIComponent(url)}`
+                  : url) // Server-side can fetch directly
+              : url;
+            
+            console.log(`Fetching Bergamot model file: ${needsProxy ? '(via proxy) ' : ''}${url}`);
             
             // Use a ReadableStream to track download progress if available
-            const response = await fetch(url, options);
+            const response = await fetch(fetchUrl, options);
             
             if (!response.ok) {
               throw new Error(`HTTP ${response.status}: ${response.statusText} for ${url}`);
