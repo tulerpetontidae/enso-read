@@ -20,47 +20,13 @@ import {
 // Re-export BottomPanelTab for external use
 export type { BottomPanelTab };
 
-// Component to handle scroll detection and close on bottom scroll
+// Simple scrollable content container for panel body
 function ScrollableContent({ 
   children, 
-  onScrollToBottom 
 }: { 
   children: React.ReactNode; 
-  onScrollToBottom: () => void;
 }) {
   const contentRef = useRef<HTMLDivElement>(null);
-  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    const content = contentRef.current;
-    if (!content) return;
-
-    const handleScroll = () => {
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-
-      scrollTimeoutRef.current = setTimeout(() => {
-        if (!content) return;
-        
-        const { scrollTop, scrollHeight, clientHeight } = content;
-        const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-        
-        if (distanceFromBottom <= 10 && scrollHeight > clientHeight) {
-          onScrollToBottom();
-        }
-      }, 100);
-    };
-
-    content.addEventListener('scroll', handleScroll, { passive: true });
-    
-    return () => {
-      content.removeEventListener('scroll', handleScroll);
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-    };
-  }, [onScrollToBottom]);
 
   return (
     <div ref={contentRef} className="h-full overflow-y-auto">
@@ -750,7 +716,7 @@ function MobileBottomPanel() {
           {/* Content Area */}
           <div className="flex-1 overflow-hidden flex flex-col">
             {activeTab === 'translation' && (
-              <ScrollableContent onScrollToBottom={handleClose}>
+              <ScrollableContent>
                 <TranslationContent
                   translation={content.translation}
                   translationError={content.translationError}
@@ -760,7 +726,7 @@ function MobileBottomPanel() {
               </ScrollableContent>
             )}
             {activeTab === 'note' && (
-              <ScrollableContent onScrollToBottom={handleClose}>
+              <ScrollableContent>
                 <NoteEditor
                   initialContent={content.noteContent}
                   paragraphHash={content.paragraphHash}
