@@ -21,8 +21,15 @@ function hashText(text: string): string {
 export async function initializeDefaultBook(): Promise<void> {
   try {
     // Don't initialize if user is logged in - cloud sync will handle books
-    if (db.cloud?.currentUser?.isLoggedIn) {
-      return;
+    try {
+      // Access currentUser value safely (it's an Observable/BehaviorSubject)
+      const currentUser = (db.cloud?.currentUser as any);
+      const user = currentUser?.value || currentUser;
+      if (user?.isLoggedIn) {
+        return;
+      }
+    } catch (e) {
+      // If currentUser is not available, continue with initialization
     }
     
     // Check if we've already initialized (check this first to avoid unnecessary book queries)

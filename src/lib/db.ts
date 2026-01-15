@@ -176,15 +176,21 @@ db.cloud.configure({
   requireAuth: false, // Make sync optional - app works without login
   unsyncedTables: ['settings', 'dictionary'],
   // Enable automatic syncing when online
-  autoSync: true,
 });
 
 
 // Initialize default bookmark groups on first load (if not already done and not logged in)
 export async function initializeBookmarkGroups(): Promise<void> {
   // Don't initialize if user is logged in - cloud sync will handle bookmark groups
-  if (db.cloud?.currentUser?.isLoggedIn) {
-    return;
+  try {
+    // Access currentUser value safely (it's an Observable/BehaviorSubject)
+    const currentUser = (db.cloud?.currentUser as any);
+    const user = currentUser?.value || currentUser;
+    if (user?.isLoggedIn) {
+      return;
+    }
+  } catch (e) {
+    // If currentUser is not available, continue with initialization
   }
   
   const count = await db.bookmarkGroups.count();
