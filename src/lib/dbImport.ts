@@ -1,5 +1,5 @@
 import { db } from './db';
-import type { Book, Progress, WebConfig, Translation, Note } from './db';
+import type { Book, Progress, WebConfig, Translation, Note, Bookmark, BookmarkGroup, ChatMessage } from './db';
 import type { ExportData } from './dbExport';
 
 export interface ValidationError {

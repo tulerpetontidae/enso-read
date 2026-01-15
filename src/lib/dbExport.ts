@@ -1,5 +1,5 @@
 import { db } from './db';
-import type { Book, Progress, WebConfig, Translation, Note } from './db';
+import type { Book, Progress, WebConfig, Translation, Note, BookmarkGroup, Bookmark, ChatMessage } from './db';
 
 export interface ExportData {
   version: string;
@@ -11,6 +11,9 @@ export interface ExportData {
     settings: WebConfig[];
     translations: Translation[];
     notes: Note[];
+    bookmarks?: Bookmark[];
+    bookmarkGroups?: BookmarkGroup[];
+    chats?: ChatMessage[];
   };
 }
 
@@ -33,12 +36,15 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 export async function exportDatabase(): Promise<string> {
   try {
     // Fetch all data from all tables
-    const [books, progress, settings, translations, notes] = await Promise.all([
+    const [books, progress, settings, translations, notes, bookmarks, bookmarkGroups, chats] = await Promise.all([
       db.books.toArray(),
       db.progress.toArray(),
       db.settings.toArray(),
       db.translations.toArray(),
       db.notes.toArray(),
+      db.bookmarks.toArray(),
+      db.bookmarkGroups.toArray(),
+      db.chats.toArray(),
     ]);
 
     // Convert book ArrayBuffers to base64 strings
@@ -54,13 +60,16 @@ export async function exportDatabase(): Promise<string> {
     const exportData: ExportData = {
       version: '1.0',
       exportDate: new Date().toISOString(),
-      schemaVersion: 5, // Current schema version
+      schemaVersion: 8, // Current schema version (version 8 with Dexie Cloud)
       data: {
         books: booksWithBase64,
         progress,
         settings: settingsWithoutApiKey,
         translations,
         notes,
+        bookmarks,
+        bookmarkGroups,
+        chats,
       },
     };
 
